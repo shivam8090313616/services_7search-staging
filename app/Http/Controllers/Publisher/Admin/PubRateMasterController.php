@@ -111,7 +111,7 @@ class PubRateMasterController extends Controller
         }
         $pubratemaster			 	= PubRateMaster::find($request->id);
         $category_id                = $pubratemaster->category_id;
-        $country_id                = $pubratemaster->country_id;
+        $country_id                 = $pubratemaster->country_id;
         $pubratemaster->cpc 		= $request->cpc;
         $pubratemaster->cpm 		= $request->cpm;
         $pubratemaster->cpa_imp 	= $request->cpa_imp;

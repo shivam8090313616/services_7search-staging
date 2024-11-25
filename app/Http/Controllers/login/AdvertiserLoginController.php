@@ -5,12 +5,12 @@ use Illuminate\Support\Str;
 
 use App\Http\Controllers\Controller;
 use App\Models\RoleManagement;
+use App\Models\EmpClientsRecord;
 use App\Models\Admin;
 use App\Models\Publisher\AdminLoginLog;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 
@@ -19,15 +19,37 @@ class AdvertiserLoginController extends Controller
 {
     public function login(Request $request)
     {
-        
+      // $ContentLength = (int) $request->header('Content-Length');
+      // $userAgent = $request->header('User-Agent', null);
+      // if (strpos($userAgent, 'Postman') !== false || strpos($userAgent, 'insomnia') !== false || $userAgent === null) {
+      //   if($ContentLength > 0){
+      //     return response()->json([
+      //       'error' => 'This API source request is not allowed!'
+      //   ], 403);
+      //   }
+      // }
+      $ContentLength = (int) $request->header('Content-Length');
+      $userAgent = $request->header('User-Agent', null);
+      $blockedTools = ['Postman','Insomnia','SoapUI','JMeter','RestAssured','Katalon Studio','Apache HttpClient','Paw','Swagger UI','Hoppscotch','cURL','Postwoman','Fiddler','API Fortress','TestRail'];
+      $blocked = false;
+      foreach ($blockedTools as $tool) {
+          if (strpos($userAgent,  $tool) !== false || $userAgent === null) {
+              $blocked = true;
+              break;
+          }
+      }
+      if ($blocked && $ContentLength > 0) {
+          return response()->json([
+              'error' => 'This API source request is not allowed!'
+          ], 403);
+      }
         $token = Str::random(60);
       	$ipadr = $_SERVER['REMOTE_ADDR'];
         $apitoken = hash('sha256', $token);
         $validator = Validator::make($request->all(),
          [
              'username' => 'required',
-             'password' => 'required',
-             'otp' => $request->otp ? ['numeric','digits:6'] : ''
+             'password' => 'required'
          ]);
          if($validator->fails())
          {
@@ -45,54 +67,35 @@ class AdvertiserLoginController extends Controller
             return response()->json($return);
          }
          $password = $request->input('password');
-        //  $otp = base64_encode($request->otp);
-         $otp = "123123";
-         $mytime = Carbon::now();
-         $otpexpTime = $users->updated_at->addMinute(15); // otp has been expired after 15 minutes.   
-         $otptime = $mytime->lessThanOrEqualTo($otpexpTime) ? 1 : 0;   
-         $sentmail = $request->sentmail;
-        //  if (Hash::check($password, $users->password) && (!$otp || $otp == $users->otp && $otptime ==1)) 
+         $mytime = Carbon::now();   
          if (Hash::check($password, $users->password)) 
          {
-           Admin::where('emp_id',$users->emp_id)->where('login_permission',1)->where('user_type',2)->update(['login_permission'=>0]); // update role status
+           EmpClientsRecord::where('emp_id',$users->emp_id)->where('role_status',1)->update(['role_status'=>0]); // update role status
            if ($users->id) 
            { 
                 $accessRole =RoleManagement::select('id','role_name','role_permission')->where('id',$users->role_id)->first();
                 $users->remember_token= $apitoken.'.'.$users->id;
-                if(($users->user_type == 1 && $otp == $users->otp) || $users->user_type == 2){
-                  $users->last_login = $mytime; 
-                }
-                if($users->user_type == 1 && $sentmail == 1){
-                  $genOtp =  rand(100000, 999999);
-                  $users->otp = base64_encode($genOtp);
-                  /* Admin Section Mail */
-                  $data['details'] = [
-                    'subject' => 'Admin Verification OTP - 7Search PPC ',
-                    'otp' => $genOtp,
-                    'uid' => $users->id,
-                    'username' => $users->username,
-                    'email' => $users->email,
-                    'message'=>'admin/dashboard'
-                  ];
-                  $adminmail1 = 'deepaklogelite@gmail.com';
-                  $adminmail2 = 'rajeevgp1596@gmail.com';
-                  $bodyadmin = View('emailtemp.paymentVerificationMail', $data);
-                  $subjectadmin = 'Admin Verification OTP - 7Search PPC';
-                  // sendmailAdmin($subjectadmin, $bodyadmin, $adminmail1, $adminmail2);
-                }
+                $users->last_login = $mytime; 
+                $otp =  rand(100000, 999999);
+                $data['details'] = array(
+                  'subject' => 'Admin Verification OTP - 7Search PPC ',
+                  'otp' => $otp,
+                  'uid' => $users->id,
+                  'username' => $users->username,
+                  'email' => $users->email
+              );
                 if($users->save())
                 {
-                    if(($otp > 0 && $otp == $users->otp) || $users->user_type == 2){
-                      $adminLog = new AdminLoginLog;
-                      $adminLog->admin_id = $users->id;
-                      $adminLog->username = $users->username;
-                      $adminLog->email = $users->email;
-                      $adminLog->ip_addrs = $ipadr;
-                      $adminLog->auth_token = $apitoken;
-                      $adminLog->created_at = $mytime;
-                      $adminLog->save();
-                    }
+                  	$adminLog = new AdminLoginLog;
+                  	$adminLog->admin_id = $users->id;
+                  	$adminLog->username = $users->username;
+                    $adminLog->email = $users->email;
+                    $adminLog->ip_addrs = $ipadr;
+                    $adminLog->auth_token = $apitoken;
+                  	$adminLog->created_at = $mytime;
+                  	$adminLog->save();
                     $return['code'] = 200;
+                    $return['otp'] = $otp;
                     $return['msg'] = 'Login Successfully.';
                     // $return['token'] = $apitoken.'.'.$users->id;
                     $return['token'] = $apitoken.'.'.base64_encode($users->id);
@@ -103,21 +106,24 @@ class AdvertiserLoginController extends Controller
                     $return['email'] =  $users->email;
                     $return['emp_id'] =  $users->emp_id;
                     $return['utype'] =  $users->user_type;
+                    $return['tokens'] = base64_encode($token.'-'. base64_encode(123456) .'-'.$token);
+                     /* Admin Section  */
+                    // $adminmail1 = 'advertisersupport@7searchppc.com';
+                    // $adminmail2 = 'info@7searchppc.com';
+                    $adminmail1 = 'ry0085840@gmail.com';
+                    $adminmail2 = 'rjshkumaryadav3@gmail.com';
+                    $bodyadmin = View('emailtemp.otpverify', $data);
+                    $subjectadmin = 'Admin Verification OTP - 7Search PPC';
+                    //sendmailAdmin($subjectadmin, $bodyadmin, $adminmail1, $adminmail2);
                     return response()->json($return);
                 }            
-               }
-              } elseif($otp && $otp != $users->otp && $users->user_type ==1){
-                $return['code'] = 102;
-                $return['msg'] = 'Invalid OTP Code!';
-              } elseif($otp && $otp == $users->otp && $otptime ==0 && $users->user_type ==1){
-                $return['code'] = 102;
-                $return['msg'] = 'OTP has been expired!';
-              } else{
-                $return['code'] = 101;
-                $return['msg'] = 'Username is invalid  Incorrect!';
-                }
-          return response()->json($return);
-      }
+            }
+         }else{
+             $return['code'] = 101;
+             $return['msg'] = 'Username is invalid  Incorrect!';
+             return response()->json($return);
+         }
+    }
 
   	public function tokenUpdate (Request $request)
     {

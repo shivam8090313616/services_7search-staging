@@ -27,7 +27,7 @@ class UserPublisher
         $getuid = User::where('password',base64_decode($authtoken))->first();
         
          if(!is_null($getuid) && $sup == 1) {
-         @$roleStatus = DB::table("emp_clients_records")->where("client_id", $getuid->uid)->value('role_status');
+          @$roleStatus = DB::table("emp_clients_records")->where("client_id", $getuid->uid)->value('role_status');
         }
 
         if(empty($getuid)){

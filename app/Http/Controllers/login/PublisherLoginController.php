@@ -139,10 +139,15 @@ class PublisherLoginController extends Controller
                   )->where('publisher_id', $user->uid)->first();
                     $token = base64_encode(str_shuffle('JbrFpMxLHDnbs' . rand(1111111, 9999999)));
                     $updateuser  = User::where('uid', $user->uid)->first();
+                    $supportPin     = generateSupportPin();
                     $lastLogin = Carbon::parse($updateuser->last_login);
                     $current_date = Carbon::now();
                     $isWithin24Hours = $lastLogin->diffInHours($current_date) < 24;
-                    $sendSupportPin = (!empty($updateuser->support_pin) && $isWithin24Hours) ? $updateuser->support_pin : generateSupportPin();
+                    if(!empty($updateuser->support_pin) && $isWithin24Hours){
+                     $sendSupportPin = $updateuser->support_pin;
+                    } else{
+                     $sendSupportPin = $supportPin;
+                    }
                     $updateuser->remember_token = $token;
                     $updateuser->support_pin    = $sendSupportPin;
                     $updateuser->last_login = $current_date;
@@ -160,7 +165,6 @@ class PublisherLoginController extends Controller
                     $return['wallet']        = ($wltPubAmt) > 0 ? $wltPubAmt : $user->pub_wallet;
                   	$return['account_type']   = $user->account_type;
                   	$return['urole']   		  = $user->user_type;
-                  	$return['mail_verified']   		  = $user->mail_verified;
                       
                     $total_earn = number_format($pay->amt+$user->pub_wallet, 2);
                     $return['total_earning'] = $total_earn ? $total_earn : 0;

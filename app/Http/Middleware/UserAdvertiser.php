@@ -39,35 +39,35 @@ class UserAdvertiser
         $authtoken = $request->header('Authorization');
         // **** SIGNATURE CREATION CODE START ****//
         // Retrieve the signature and timestamp from the X-Signature header
-        // $signatureHeader = $request->header('Signature');
+        $signatureHeader = $request->header('Signature');
 
-        // if (!$signatureHeader || strpos($signatureHeader, ':') === false) {
-        //     return response()->json(['error' => 'Invalid signature format'], 403);
-        // }
+        if (!$signatureHeader || strpos($signatureHeader, ':') === false) {
+            return response()->json(['error' => 'Invalid signature format'], 403);
+        }
 
-        // // Split the signature and timestamp
-        // [$clientSignature, $timestamp] = explode(':', $signatureHeader);
-        // $decodedTimestamp = base64_decode($timestamp);
-        // $timestamp = (int)$decodedTimestamp; // Convert the decoded timestamp back to an integer
+        // Split the signature and timestamp
+        [$clientSignature, $timestamp] = explode(':', $signatureHeader);
+        $decodedTimestamp = base64_decode($timestamp);
+        $timestamp = (int)$decodedTimestamp; // Convert the decoded timestamp back to an integer
 
-        // // Get the current server timestamp
-        // $currentTimestamp = time(); // In seconds
+        // Get the current server timestamp
+        $currentTimestamp = time(); // In seconds
 
-        // // Ensure the timestamp exists and is within a 6-seconds window
-        // if (abs($currentTimestamp - $timestamp) > 6) {
-        //     return response()->json(['error' => 'Request expired or invalid timestamp'], 403);
-        // }
+        // Ensure the timestamp exists and is within a 6-seconds window
+        if (abs($currentTimestamp - $timestamp) > 6) {
+            return response()->json(['error' => 'Request expired or invalid timestamp'], 403);
+        }
 
-        // // Concatenate data with the timestamp, just like on the frontend
-        // $dataToSign = $authtoken . ':' . $timestamp;
+        // Concatenate data with the timestamp, just like on the frontend
+        $dataToSign = $authtoken . ':' . $timestamp;
 
-        // // Generate the server-side signature
-        // $serverSignature = hash_hmac('sha256', $dataToSign, $key);
+        // Generate the server-side signature
+        $serverSignature = hash_hmac('sha256', $dataToSign, $key);
 
-        // // Compare the signatures
-        // if ($clientSignature !== $serverSignature) {
-        //     return response()->json(['error' => 'Invalid signature'], 403);
-        // }
+        // Compare the signatures
+        if ($clientSignature !== $serverSignature) {
+            return response()->json(['error' => 'Invalid signature'], 403);
+        }
         // **** SIGNATURE CREATION CODE END ****//
         $getuid = User::where('uid', $uid)->where('password', base64_decode($authtoken))->first();
 
@@ -85,14 +85,12 @@ class UserAdvertiser
                     'code' => 403,
                     'msg' => 'Your Account is not exist!'
                 ]);
-            }
-            //  elseif ($getuid->ac_verified == 0) {
-            //     return response()->json([
-            //         'code' => 403,
-            //         'msg' => 'Your Account is not verified!'
-            //     ]);
-            // } 
-            elseif ($getuid->status == '3') {
+            } elseif ($getuid->ac_verified == 0) {
+                return response()->json([
+                    'code' => 403,
+                    'msg' => 'Your Account is not verified!'
+                ]);
+            } elseif ($getuid->status == '3') {
                 return response()->json([
                     'code' => 403,
                     'msg' => 'Your Account is suspended!'

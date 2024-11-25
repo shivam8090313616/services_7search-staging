@@ -83,39 +83,8 @@ class RedisFunctionsController extends Controller
         return;
     }
     
-    /* This will remove old data from daily budget set */
-    
-    public function removeDailyBudget(){
-        $redisCon = Redis::connection('default');
-        $users = DB::table('users')->select('uid')->where('status', 0)->where('user_type', '!=', 2)->get()->toArray();
-        foreach ($users as $user){
-            $data = json_decode($redisCon->rawCommand('hget', 'budget_utilize', $user->uid), true);
-            if(!empty($data)){
-                $redisCon->rawCommand('hdel', 'budget_utilize', $user->uid);
-                $filteredData = array_filter($data, function ($item) {
-                    return $item['udate'] == date('Y-m-d');
-                });
-                if(!empty($filteredData)){
-                    $redisCon->rawCommand('hset', 'budget_utilize', $user->uid, json_encode($filteredData));
-                }
-            }
-        }
-        return ['msg'=>'data removed'];
-    }
-    
     public function setFunctions(){
         $redisCon = Redis::connection('default');
-        // $data = checkPayAttempts('ADV6672AA674E86B');
-        // Get the current time
-        // $currentTimestamp = time();
-    
-        // // Get the timestamp for the end of the current day (23:59:59)
-        // $endOfDayTimestamp = strtotime('tomorrow') - 1;
-    
-        // // Calculate the difference in seconds
-        // $secondsLeft = $endOfDayTimestamp - $currentTimestamp;
-    
-        // return $secondsLeft;
         //         $adminMailData = [
         //     'subject' => 'New User Registration',
         //     'body' => 'A new user has registered.',
@@ -141,51 +110,37 @@ class RedisFunctionsController extends Controller
         // 'CMPT65C4A160250AC';
         // $data2 = json_decode($redisCon->rawCommand('json.get', 'clicks'), true);
         // echo count($data2);
-        $amt = 15;
-        $uid = 'ADV652E5165508A0';
-        // $redisCon->rawCommand('hincrbyfloat', 'pub_wallet',  $uid, $amt);
+        // $amt = 570.14;
+        $uid = 'PUB65CB3962F2E16';
         // $redisCon->rawCommand('hset', 'adv_wallet', $uid, $amt);
-        // $redisCon->rawCommand('hset', 'pub_wallet', $uid, $amt);
         //  $data = json_decode($redisCon->rawCommand('json.get', 'impressions', '$'),true);
         //  $data = json_decode($redisCon->rawCommand('json.get', 'clicks'),true);
         // $uni_imp_id = md5('ADV652E5165508A0' . 'CMPS66680962DF05D' . 'windows' . 'Desktop' . 'UNITED STATES' . date('Ymd'));
         // $data = DB::table('adv_stats')->where('uni_imp_id', $uni_imp_id)->get();
         // $data = DB::table('adv_stats')->where('udate', '2024-06-13')->get()->toArray();
         //  $data = json_decode($redisCon->rawCommand('json.get', 'clicks', '$'),true);
-        // $data = json_decode($redisCon->rawCommand('hget', 'budget_utilize', 'ADV6548C32A31637'), true);
-        // $data = $redisCon->rawCommand('get', 'budget_utilize:28d29126125ffc05a04e8bbc86d367d8');
-        // $data = $redisCon->rawCommand('hgetall', 'budget_utilize');
+        // $data = json_decode($redisCon->rawCommand('hget', 'budget_utilize', 'ADV6468E76819D73'), true);
         // $data = getDailyBudget('ADV666567B4E0531', 'CMPN6665721514677');
         // $data = json_decode($redisCon->rawCommand('json.get', 'impressions'), true);
-        $adsess = ['cmp'=>'123'];
-        // $redisCon->rawCommand('setex', "ad_sessions:", 10, json_encode($adsess));
-        // $data = json_decode($redisCon->rawCommand('get', "ad_sessions:SESID66C82052EFACB"),true);
         // $data = json_decode($redisCon->rawCommand('json.get', 'clicks'), true);
         // $data = $redisCon->rawCommand('hget', 'pub_wallet', 'ADV652E5165508A0');
         // $data = $redisCon->rawCommand('hget', 'adv_wallet', $uid);
-        $data = $redisCon->rawCommand('hget', 'pub_wallet', $uid);
+        // $data = $redisCon->rawCommand('hget', 'pub_wallet', $uid);
         // $dt = md5(30 . 'US');
         // $data = json_decode($redisCon->rawCommand('hget', 'pub_rate_masters', $dt), true);
-        
-        // $res = ['camp_id' => 'dghdjkg'];
-        // $data = $redisCon->rawCommand('json.set', 'addSess:' . 'campaign_id', '$', json_encode($res))  && $redisCon->rawCommand('expire', 'addSess:campaign_id', 30);
-        // $query1 = "@country_code:{IN} @device_type:{Desktop} @device_os:{android}  (@ad_type:(text))";
-        // $data = $redisCon->rawCommand('ft.search', "7sAds", $query1, 'LIMIT', 0, 10);
+        $query1 = "@country_code:{IN} @device_type:{Desktop} @device_os:{android}  (@ad_type:(text))";
+        $data = $redisCon->rawCommand('ft.search', "7sAds", $query1, 'LIMIT', 0, 10);
         // $data = json_decode($redisCon->rawCommand('hget', 'adv_stats', $uid), true);
         // echo 'sghfd';
-        // $data = json_decode($redisCon->rawCommand('json.get', '7s_camps:CMPB65FD571BCE367', '$'), true);
-        // $data = json_decode($redisCon->rawCommand('hget', 'categories_data', 114), true);
-        // $data = updateUserCampsAdunits('ADV65F030697F34E', 0);
-        // $data = json_decode($redisCon->rawCommand('json.get', 'ad_sessions:SESID66C72C6F9A6F1'), true);
+        // $data = json_decode($redisCon->rawCommand('json.get', '7s_camps:CMPB6406DC3EE9F76', '$'), true);
         // $data = $redisCon->rawCommand('ft.search', "7sAds", "@website_category:[64 64]", 'LIMIT', 0, 10);
         // $data = getCampAd(113, 33, 'Desktop', 'windows', 0, 0, 'native', 4,1);
         // $data = DB::table('campaigns')->where('ad_type', 'popup')->where('status', 2)->get();
         // $data = DB::table('users')->where('uid', 'ADV64AB8FF0841FF')->first();
         // print_r($data);die;
-        //  updateUserCampsAdunits('PUB6542008EEB313', 0);
-        // $data = $redisCon->rawCommand('hget', "webdata", '7SAD15669B583D46197');
+        // $data = $redisCon->rawCommand('hget', "webdata", '7SAD1565F1F369CC91F');
         print_r($data);
-        // print_r(count($data));
+        // print_r(count($data[0]));
         // setWebData();
         // setTextCamp();
         // setBannerCamp();

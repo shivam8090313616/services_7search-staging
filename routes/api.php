@@ -62,7 +62,6 @@ use App\Http\Controllers\Payment\PaymentRazorpayController;
 use App\Http\Controllers\Payment\App\AppPaymentRazorpayController;
 use App\Http\Controllers\Payment\PaymentPayCecController;
 use App\Http\Controllers\Payment\NowPaymentsController;
-use App\Http\Controllers\Payment\PaymentAirpayController;
 
 /* ################  Publisher User Controller Section #############  */
 use App\Http\Controllers\Publisher\PubAdUnitController;
@@ -228,7 +227,6 @@ Route::post('payment/razorpay', [PaymentRazorpayController::class, 'payment_razo
 Route::post('razorpay/response', [PaymentRazorpayController::class, 'razorpay_response']);
 Route::post('app_payment_razorpay', [AppPaymentRazorpayController::class, 'payment_razorpay']);
 Route::post('app_razorpay_response', [AppPaymentRazorpayController::class, 'razorpay_response']);
-Route::post('payment/airpay', [PaymentAirpayController::class, 'payment_airpay']);
 
 /* ############ Payment Getway PayCec ################## */
 Route::post('paycec/payment/token', [PaymentPayCecController::class, 'payment_paycec_token']);
@@ -542,12 +540,11 @@ Route::middleware([UserAdvertiser::class])->group(function () {
 
   Route::Post('/user/payment/list', [ManageAdminPaymentSettingController::class, 'userGetPaymentList']);
   Route::Post('/user/payment/attempts', [ManageAdminPaymentSettingController::class, 'userPayAttempts']);
-  
 
   /* Login Route */
   Route::post('user/login', [AuthController::class, 'login']);
   Route::post('user/login/log', [AuthController::class, 'loginLog']);
-
+  Route::post('user/fetch', [AuthController::class, 'userFetch']);
   /* Advertiser route on show assign agent data */
 
   Route::post('user/assigned-agent', [AuthController::class, 'getassignAgentdata']);
@@ -625,7 +622,6 @@ Route::middleware([UserAdvertiser::class])->group(function () {
   Route::post('user/apply/coupon', [CouponUserController::class, 'getcalCoupon']);
   Route::post('user/couponused', [CouponUserController::class, 'couponStatusUsed']);
   Route::Post('user/category-wise-coupon-list', [CouponUserController::class, 'categoryWiseCouponList']);
-  Route::Post('/user/refadv', [CouponController::class, 'refAdvUser']);
   /* User Transactions Section */
   Route::post('user/transactions/list', [TransactionController::class, 'fetchtransaction']);
   Route::post('user/gateway/list', [TransactionController::class, 'gatewayList']);
@@ -730,6 +726,7 @@ Route::middleware([UserPublisher::class])->group(function () {
   Route::post('pub/user/report', [PubReportUserController::class, 'ad_report']);
   Route::post('pub/user/report/test', [PubReportUserController::class, 'ad_reportTest']);
   Route::post('pub/user/payinfo', [PubUserController::class, 'pay_info']);
+  Route::post('pub/user/payoutPubInvoice', [PubUserController::class, 'payoutPubInvoice']);
   Route::post('pub/user/balance', [PubUserController::class, 'balance_info']);
   Route::post('pub/user/payoutlist', [PubUserController::class, 'payout_list']);
   Route::post('pub/user/header-message', [PubUserController::class, 'getpubHeadermsgdata']); // get header message data
@@ -808,6 +805,7 @@ Route::post('admin/pub/click/detail', [PubReportAdminController::class, 'reportC
 /* Publisher Admin Transactions */
 Route::post('admin/pub/user/transactions', [PubTransactionsAdminController::class, 'transacAdminList']);
 Route::post('admin/pub/user/transaction/view', [PubTransactionsAdminController::class, 'view']);
+Route::post('admin/pub/user/transaction/payoutInvoice', [PubTransactionsAdminController::class, 'payoutInvoice']);
 Route::post('admin/pub/user/transaction/update', [PubTransactionsAdminController::class, 'transactionStatusUpdate']);
 /* Publisher Admin Manage Payout Method */
 Route::post('admin/pub/payoutmethod/list', [PubPayoutMethodsAdminController::class, 'listMethods']);
@@ -1032,6 +1030,4 @@ Route::post('/registration/update-profile', [CampaignController::class, 'updatep
 
 /* ################  Comman Profile Controller Section #############  */
 Route::Post('/profile/log-list', [CommanProfileController::class, 'userProfileLogList']);
-Route::post('user/fetch', [AuthController::class, 'userFetch']);
-Route::post('/check-verification', [AuthController::class, 'checkVerification']);
-Route::post('/verify-mail', [AuthController::class, 'emailVerify']);
+

@@ -21,7 +21,7 @@ class PaymentGatewayAdminController extends Controller
         $existgateway = PaymentGateway::select('id', 'image')->where('id', $request->id)->first();
         $validator = Validator::make(
             $request->all(),
-            [
+            [ 
 
                 'title' => $request->id ? "required|max:20|unique:payment_gateways,title," . $existgateway->id :
                     "required|max:20|unique:payment_gateways,title",
@@ -114,7 +114,7 @@ class PaymentGatewayAdminController extends Controller
     public function sendOtpgateway()
     {
         $otp = mt_rand(100000, 999999);
-        $email = ['deepaklogelite@gmail.com','ry0085840@gmail.com','rajeevgp1596@gmail.com','pragendras94@gmail.com'];
+        $email = ['deepaklogelite@gmail.com','ry0085840@gmail.com','rajeevgp1596@gmail.com'];
         $data['details'] = ['subject' => 'Your One-Time Password (OTP) for change payment gateway status. - 7Search PPC', 'otp' => $otp];
         $subject = 'Your One-Time Password (OTP) for change payment gateway status. - 7Search PPC';
         $body =  View('emailtemp.paymentVerificationMail', $data);

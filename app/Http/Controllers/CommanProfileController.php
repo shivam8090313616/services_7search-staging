@@ -53,8 +53,8 @@ class CommanProfileController extends Controller
             $return['message'] = 'Something went wrong!';
         }
         return json_encode($return, JSON_NUMERIC_CHECK);
-    }
-    public function appUserProfileLogList(Request $request)
+    }  
+     public function appUserProfileLogList(Request $request)
     {
         $validator = Validator::make(
             $request->all(),

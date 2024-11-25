@@ -46,7 +46,6 @@ class User extends Authenticatable
         'verify_code',
         'ip',
         'last_login',
-        'mail_verified',
     ];
 
     /**
@@ -68,4 +67,6 @@ class User extends Authenticatable
         'email_verified_at' => 'datetime',
         'pub_wallet' => 'float',
     ];
+
+    
 }

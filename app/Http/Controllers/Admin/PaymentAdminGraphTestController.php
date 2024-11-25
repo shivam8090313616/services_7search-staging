@@ -181,7 +181,7 @@ class PaymentAdminGraphTestController extends Controller
             ->where("transactions.payment_mode", "!=", "bonus")
             ->where("transaction_logs.cpn_typ", 0)
             ->where("users.account_type", 0)
-            ->sum(DB::raw("ss_transactions.amount + ss_transactions.fee + ss_transactions.gst"));
+            ->sum("transactions.payble_amt");
         $response = [
             "todayAmount" => $date === date("Y-m-d") ? $payments->todayAmount : 0 ,
             "averageMonthlyAmount" => ($averageMonthlyAmount / $totaDay),
@@ -193,7 +193,7 @@ class PaymentAdminGraphTestController extends Controller
         $sdate = "{$yearMonth}-01";
         $edate = $yearMonth == date("Y-m") ? date("Y-m-d") : Carbon::parse($sdate)->endOfMonth()->format("Y-m-d");
         $payments = DB::table("transactions")
-            ->selectRaw("DATE(ss_transaction_logs.created_at) as date, SUM(ss_transactions.amount + ss_transactions.fee + ss_transactions.gst) as dailyAmount")
+            ->selectRaw("DATE(ss_transaction_logs.created_at) as date, SUM(ss_transactions.payble_amt) as dailyAmount")
             ->join("users", "users.uid", "=", "transactions.advertiser_code")
             ->join("transaction_logs", "transaction_logs.transaction_id", "=", "transactions.transaction_id")
             ->where("users.account_type", 0)

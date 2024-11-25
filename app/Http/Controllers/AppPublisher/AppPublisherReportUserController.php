@@ -268,7 +268,7 @@ class AppPublisherReportUserController extends Controller
          'status' =>1,
       );
       $datainsert  =  DB::table('pub_user_payout_modes')->insert($values);
-      $msg = 'Insert Data Successfully!';
+      $msg = 'Updated payout method!';
       if($datainsert){
         $return['code'] = 200;
         $return['message'] = $msg;

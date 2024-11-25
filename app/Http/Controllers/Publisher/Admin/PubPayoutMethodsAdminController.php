@@ -129,7 +129,28 @@ class PubPayoutMethodsAdminController extends Controller
   
   	public function updateMethods(Request $request)
     {
-      
+    //   if($request->image){
+    //     $validator = Validator::make(
+    //       $request->all(),
+    //       [
+    //           'method_name' 		=> 'required',
+    //           'image' 			=> 'required|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
+    //           'processing_fee' 	=> 'required',
+    //           'min_withdrawl' 	=> 'required',
+    //           'display_name' 		=> 'required',
+    //       ]
+    //   );
+    //   }else{
+    //     $validator = Validator::make(
+    //       $request->all(),
+    //       [
+    //           'method_name' 		=> 'required',
+    //           'processing_fee' 	=> 'required',
+    //           'min_withdrawl' 	=> 'required',
+    //           'display_name' 		=> 'required',
+    //       ]
+    //   );
+    //   }
     if ($request->image) {
       $validator = Validator::make(
         $request->all(),

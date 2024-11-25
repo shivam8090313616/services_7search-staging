@@ -63,7 +63,7 @@ class PubWebsiteAdminController extends Controller {
         }else{
             $list->where('pub_websites.trash',0)->orderBy('pub_websites.id','desc');
         }
-        $row        = $list->count();
+        $row        = PubWebsite::where('trash',0)->count();
         $list       = $list->offset($start)->limit($limit)->get()->toArray();
         if ( count( $list ) > 0 ) {
             $return[ 'code' ] = 200;

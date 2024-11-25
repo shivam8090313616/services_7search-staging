@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\DB;
 
 class AdvTrafficController extends Controller
 {
-
+ 
     // api for get traffic list data
     public function get_traffic_data(Request $request)
     {

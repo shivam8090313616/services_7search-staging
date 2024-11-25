@@ -25,7 +25,7 @@ class EmployeeMgmtController extends Controller
         $result = DB::table('admins')
             ->join('role_managements', 'admins.role_id', '=', 'role_managements.id')
             ->where("admins.user_type",2)
-            ->select('admins.id','admins.name','admins.username','admins.role_id','admins.email','admins.status','admins.created_at', 'role_managements.role_name','admins.updated_at');
+            ->select('admins.id','admins.name','admins.username','admins.role_id','admins.email','admins.status','admins.created_at', 'role_managements.role_name');
         $row = $result->count();
         if($src){
             $result->whereRaw('concat(ss_admins.name," ",ss_admins.email," ",ss_role_managements.role_name," ",ss_admins.username) like ?', "%{$src}%");
@@ -102,9 +102,6 @@ class EmployeeMgmtController extends Controller
         
         $empData = ($request->id) ? Employee_mgmt::find($request->id):new Employee_mgmt;
         $message = ($request->id) ? 'Employee Updated Successfully.' : 'Employee Added Successfully.';
-        if($request->id && $empData->role_id != $request->role_id){
-            Employee_mgmt::select('login_permission')->where('id',$request->id)->where('user_type',2)->update(['login_permission'=>1]);
-        }
         $empData->name = $request->name;
         $empData->username = $request->username;
         $empData->emp_id = randomEmpid();
@@ -152,9 +149,7 @@ class EmployeeMgmtController extends Controller
                [
                 'emp_id' => 'required|exists:admins,emp_id',
                 'support_pin' => 'required|exists:users,support_pin',
-            ],[
-                'support_pin.exists'=>'Invalid Support Pin!'
-            ]);
+                ]);
             
             if($validator->fails()) {
             $return['code'] = 100;
@@ -166,13 +161,7 @@ class EmployeeMgmtController extends Controller
        $client_id = User::select('uid')->where('support_pin',$request->support_pin)->first();
        $uni_empclient_id = md5($request->emp_id.'-'.$client_id->uid);
        $match_uniqueid = EmpClientsRecord::where('uni_empclient_id',$uni_empclient_id)->doesntExist();
-       $checkclient = EmpClientsRecord::where("client_id",$client_id->uid)->exists();
-       if($checkclient && $match_uniqueid == true){
-        $return['code'] = 101;
-        $return['message'] = "This record is already assigned to other Employee.";
-        return json_encode($return);
-        exit;
-       }
+       
        if($match_uniqueid){
           $record = new EmpClientsRecord;
           $record->uni_empclient_id = $uni_empclient_id;
@@ -193,21 +182,28 @@ class EmployeeMgmtController extends Controller
           return json_encode($return);
      }
 
-     public function delemployeeData() {
-        $cutoff_date = Carbon::now()->subHours(24);
-        // Fetch records older than 24 hours
-        $recordsToDelete = EmpClientsRecord::where('created_at', '<', $cutoff_date)->get();
+      public function delemployeeData() {
+        $current_date = Carbon::now();
+        
+        // Calculate the date and time 24 hours ago
+        $cutoff_date = $current_date->subHours(24);
        
-       foreach ($recordsToDelete as $record) {
-           User::where('uid', $record->client_id)->update(['support_pin' => null]);
-       }
-       // Delete records older than 24 hours and get the count of deleted records
-       $deletedCount = EmpClientsRecord::where('created_at', '<', $cutoff_date)->delete();
-       return response()->json([
-           'code' => $deletedCount > 0 ? 200 : 101,
-           'message' => $deletedCount > 0 ? 'Employee Support Data Deleted Successfully.' : 'No records found older than 24 hours!',
-           'deleted_count' => $deletedCount
-       ]);
+        // Delete records older than 24 hours
+        $deletedCount = EmpClientsRecord::where('created_at', '<', $cutoff_date)->delete();
+   
+        // Return a response based on the result
+        if ($deletedCount > 0) {
+           return response()->json([
+               'code' => 200,
+               'message' => 'Employee Support Data Deleted Successfully.',
+               'deleted_count' => $deletedCount
+           ]);
+        } else {
+           return response()->json([
+               'code' => 101,
+               'message' => 'No records older than 24 hours found!'
+           ]);
+        }
     }
      
 }

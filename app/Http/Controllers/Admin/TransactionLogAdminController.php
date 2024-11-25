@@ -370,7 +370,7 @@ class TransactionLogAdminController extends Controller
         $txn_id = $request->txnid;
         $uid = $request->uid;
         $getUser = DB::table('users')->select('account_type', 'uid')->where('uid', $uid)->where('status', 0)->where('trash', 0)->first();
-        $transaction = Transaction::select('transaction_id', 'advertiser_code', 'amount', 'cpn_id', 'cpn_code', 'cpn_amt', 'status','gst_no','bank_id','payment_mode','post_code','legal_entity','name','country','address','state','city','phone')->where('transaction_id', $txn_id)->first();
+        $transaction = Transaction::select('transaction_id', 'advertiser_code', 'amount', 'cpn_id', 'cpn_amt', 'status','gst_no','bank_id','payment_mode','post_code','legal_entity','name','country','address','state','city','phone')->where('transaction_id', $txn_id)->first();
         if($transaction->payment_mode == 'wiretransfer'){
             $validator = Validator::make($request->all(),[
                 'amount' => ['required', 'numeric', 'min:1'],
@@ -462,7 +462,7 @@ class TransactionLogAdminController extends Controller
                 $transaction_log->pay_type = 'credit';
                 // $transaction_log->serial_no = generate_serial();
                 $transaction_log->cpn_typ = 1;
-                $transaction_log->remark = $transaction->cpn_code == "REF_REWARD" ? 'Referral Reward added to wallet successfully' : "Coupon Amount added to wallet successfully";
+                $transaction_log->remark = 'Coupon Amount added to wallet successfully';
                 $transaction_log->save();
                 $usercouponamount = User::where('uid', $uid)->first();
                 $usercouponamount->wallet = $usercouponamount->wallet + $transaction->cpn_amt;

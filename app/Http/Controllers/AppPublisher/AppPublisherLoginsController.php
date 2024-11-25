@@ -193,7 +193,6 @@ class AppPublisherLoginsController extends Controller
         }
         return json_encode($return);
     }
-    
     public Function DeleteUser(Request $request){
         $validator = Validator::make($request->all(), [
             'uid'     => 'required',
@@ -205,14 +204,22 @@ class AppPublisherLoginsController extends Controller
             $return['error']   = $validator->errors();
             return json_encode($return);
         }
-        $ulist = User::where('uid', $request->uid)->whereIn('user_type',[2,3])->first();
-        if(!empty($ulist) && $ulist->status == 2 || $ulist->status == 3 || $ulist->trash == 1 || $ulist->status == 4){
-            $return['code'] = 101;
-            $return['msg'] = 'User have been suspended,holde or deleted successfully!';
+        if($request->type === 2){
+            $type = 1;
         }else{
+            $return['code'] = 101;
+            $return['msg'] = 'User Type Is Invalid!';
+            return response()->json($return);
+        }
+        $userExists  = User::where('uid', $request->uid)->where('user_type', '!=', $type)->where('trash', 0)->exists();
+        if ($userExists ) { 
             $return['code'] = 200;
-            $return['msg'] = 'This user is not suspended,hold or deleted!';
-        } 
-         return response()->json($return);
+            $return['data'] = $userExists ;
+            $return['msg'] = 'User Found successfully!';
+        }else{
+            $return['code'] = 101;
+            $return['msg'] = 'User does not exist!';
+        }
+        return response()->json($return);
     }
 }

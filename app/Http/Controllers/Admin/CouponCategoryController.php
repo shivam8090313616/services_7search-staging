@@ -261,7 +261,6 @@ class CouponCategoryController extends Controller
     */
     
    public function couponCatStatusUpdate(Request $request){
-   
     $cid = $request->cid;
     $validator = Validator::make(
         $request->all(),

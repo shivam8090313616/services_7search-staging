@@ -13,42 +13,9 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Redis;
-use App\Jobs\SetImpressionJob;
-use App\Jobs\CacheAdSessionJob;
 
 class AdScriptController extends Controller
 {
-    
-    // Add this method to your existing controller
-    protected function validateImpressionData(array $impData)
-    {
-        $requiredFields = [
-            'impression_id',
-            'ad_session_id',
-            'campaign_id',
-            'advertiser_code',
-            'publisher_code',
-            'adunit_id',
-            'website_id',
-            'device_type',
-            'device_os',
-            'ip_addr',
-            'country',
-            'ad_type',
-            'amount',
-            'website_category'
-        ];
-    
-        foreach ($requiredFields as $field) {
-            if (empty($impData[$field])) {
-                return false;
-            }
-        }
-    
-        return true;
-    }
-
-
     public function adList(Request $request)
     {
         // print_r($request->all());die;
@@ -64,6 +31,7 @@ class AdScriptController extends Controller
         $lim = ($request->lim > 1) ? $request->lim : 1;
         $adunit_id = $request->adunit_id;
         $ad_type = $request->ad_type;
+
         // $adunit = ($adunit_id) ?  getAdInfo($adunit_id) : '';
         // // print_r($adunit_id);die;
         // $website_server = $_SERVER['HTTP_REFERER'];
@@ -197,16 +165,8 @@ class AdScriptController extends Controller
                     "date_time" => date('Y-m-d H:i:s')
                 ];
                 $campdata[$key]['ad_session_id'] = $sessid;
-                // $redisCon->rawCommand('json.set', 'ad_sessions:' . $sessid, '$', json_encode($adsess))  && $redisCon->rawCommand('expire', 'ad_sessions:'.$sessid, 3600);
-                // $redisCon->rawCommand('hset', "ad_sessions", $sessid, json_encode($adsess));
-                $redisCon->rawCommand('setex', "ad_sessions:".$sessid, 3600, json_encode($adsess));
+                $redisCon->rawCommand('hset', "ad_sessions", $sessid, json_encode($adsess));
                 setImpression($impData, $cmp['pricing_model'], $loc['country_code'], $cmp['adv_cpm'], $cmp['pub_cpm']);
-                if ($this->validateImpressionData($impData)) {
-                    dispatch(new SetImpressionJob($impData, $cmp['pricing_model'], $loc['country_code'], $cmp['adv_cpm'], $cmp['pub_cpm']));
-                    dispatch(new CacheAdSessionJob($sessid, $adsess));
-                } else {
-                    return response()->json(['code' => 101, 'message' => 'Device or OS or IP not found!'], 400);
-                }
             }
         } else {
 
@@ -239,9 +199,7 @@ class AdScriptController extends Controller
                 "ad_type" => $ad_type,
                 "date_time" => date('Y-m-d H:i:s')
             ];
-            // $redisCon->rawCommand('json.set', 'ad_sessions:' . $sessid, '$', json_encode($adsess))  && $redisCon->rawCommand('expire', 'ad_sessions:'.$sessid, 3600);
-            // $redisCon->rawCommand('hset', "ad_sessions", $sessid, json_encode($adsess));
-            $redisCon->rawCommand('setex', "ad_sessions:".$sessid, 3600, json_encode($adsess));
+            $redisCon->rawCommand('hset', "ad_sessions", $sessid, json_encode($adsess));
             $campdata['ad_session_id'] = $sessid;
             setImpression($impData, $campdata['pricing_model'], $loc['country_code'], $campdata['adv_cpm'], $campdata['pub_cpm']);
         }

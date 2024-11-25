@@ -180,18 +180,53 @@ class AppPublisherUserController extends Controller
     }
     public function pubKycUpload(Request $request)
     { 
-        $validator = Validator::make($request->all(), [
-            'uid' => 'required',
-            'user_photo' => 'required_without:user_photo_id',
-            'user_photo_id' => 'required_without:user_photo',
-        ]);
-        
+      	if(!$request->user_photo && !$request->user_photo_id) {
+          	$validator = Validator::make(
+            $request->all(),
+            [
+                'uid' => 'required',
+                'user_photo' => 'required',
+                'user_photo_id' => 'required',
+            ]
+        ); 
+       }
+         if($request->user_photo && $request->user_photo_id) {
+           $validator = Validator::make(
+            $request->all(),
+            [
+                'uid' => 'required',
+                'user_photo' => 'required',
+                'user_photo_id' => 'required',
+            ]
+        ); 
+       }
+      if($request->user_photo && !$request->user_photo_id) {
+       
+           	$validator = Validator::make(
+            $request->all(),
+            [
+                'uid' => 'required',
+                'user_photo' => 'required',
+            ]
+        ); 
+       }
+      
+      
+      if(!$request->user_photo && $request->user_photo_id) {
+          	$validator = Validator::make(
+              $request->all(),
+              [
+                  'uid' => 'required',
+                  'user_photo_id' => 'required',
+                  // 'user_photo_id' => 'required|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
+              ]
+          ); 
+       }
         if ($validator->fails()) {
-            return response()->json([
-                'code' => 100,
-                'error' => $validator->errors(),
-                'message' => 'Validation error!',
-            ]);
+            $return['code'] = 100;
+            $return['error'] = $validator->errors();
+            $return['message'] = 'Validation error!';
+            return json_encode($return);
         }
       	$user        = User::where('uid', $request->uid)->first();
       	if(empty($user))
@@ -216,6 +251,7 @@ class AppPublisherUserController extends Controller
          }
       
       	if($request->user_photo_id) {
+
           $base_str = explode(';base64,', $request->user_photo_id);
           $ext = str_replace('data:image/', '', $base_str[0]);
           $image = base64_decode($base_str[1]);
@@ -224,16 +260,8 @@ class AppPublisherUserController extends Controller
           $user->user_photo_id  = $imageIdName;
           $user->photo_id_verified	= 1;
       	}
-        if($request->user_pan) {
-          $base_str = explode(';base64,', $request->user_pan);
-          $ext = str_replace('data:image/', '', $base_str[0]);
-          $image = base64_decode($base_str[1]);
-          $imageIdName = md5(Str::random(10)) . '.' . $ext; 
-          file_put_contents('kycdocument/'.$imageIdName, $image); 
-          $user->user_pan  = $imageIdName;
-          $user->pan_verified	= 1;
-      	}
           if ($user->update()) {
+            
             /* Adunit Activity Add & Generate Notification */
                 $activitylog = new Activitylog();
                 $activitylog->uid    = $request->uid;
@@ -241,21 +269,29 @@ class AppPublisherUserController extends Controller
                 $activitylog->description    = 'Kyc Document uploaded by user successfully';
                 $activitylog->status    = '1';
                 $activitylog->save();
+              
             	/* Admin Section  */
+              
               	$email = $user->email;
                 $fullname = $user->first_name . ' ' . $user->last_name;
                 $useridas = $user->uid;
+                                
+              
               	$data['details'] = array('subject' => 'Kyc Document uploaded by user successfully - Publisher 7Search PPC ', 'fullname' => $fullname,  'usersid' => $useridas);
+                             
                 $adminmail1 = 'advertisersupport@7searchppc.com';
                 // $adminmail1 = ['advertisersupport@7searchppc.com','testing@7searchppc.com'];
                 $adminmail2 = 'info@7searchppc.com';
                 $bodyadmin =   View('emailtemp.userkycuploadedadmin', $data);
                 $subjectadmin = 'Kyc Document uploaded by user successfully - Publisher 7Search PPC';
                 $sendmailadmin =  sendmailAdmin($subjectadmin,$bodyadmin,$adminmail1,$adminmail2); 
-                if($sendmailadmin == '1'){
+                if($sendmailadmin == '1') 
+                {
                     $return['code'] = 200;
                     $return['message']  = 'Mail Send & Document Uploaded successfully !';
-                }else {
+                }
+                else 
+                {
                     $return['code'] = 200;
                     $return['message']  = 'Mail Not Send But Document Uploaded successfully !';
                 }
@@ -263,17 +299,18 @@ class AppPublisherUserController extends Controller
               $return['code']    = 101;
               $return['message'] = 'Something went wrong!';
           }
+          
+       
         return json_encode($return);
     }
   
-  
-    public function pubKycInfo(Request $request)
-    { 
-      $user = User::select('user_photo','user_photo_remark', 'user_photo_id_remark', 'user_photo_id', 'photo_verified', 'photo_id_verified','user_pan','pan_verified','user_pan_remark')
+  	public function pubKycInfo(Request $request)
+    {
+      $user = User::select('user_photo','user_photo_remark', 'user_photo_id_remark', 'user_photo_id', 'photo_verified', 'photo_id_verified')
         ->where('uid', $request->uid)->first();
       $user->user_photo = config('app.url').'kycdocument'. '/' .$user->user_photo;
       $user->user_photo_id = config('app.url').'kycdocument'. '/' .$user->user_photo_id;
-      $user->user_pan = config('app.url').'kycdocument'. '/' .$user->user_pan;
+      //$doc_log = PubDocumentLog::select('status','remark')->where('uid', $request->uid)->
       if ($user) {
         $return['code']    = 200;
         $return['data']    = $user;
@@ -282,6 +319,7 @@ class AppPublisherUserController extends Controller
         $return['code']    = 101;
         $return['message'] = 'Data not found';
       }
+
       return json_encode($return, JSON_NUMERIC_CHECK);
     }
   	

@@ -8,11 +8,10 @@ use App\Models\Country;
 use App\Models\Campaign;
 use App\Models\Category;
 use App\Models\PubAdunit;
-use App\Models\PubWebsite;
 use App\Models\UsedCoupon;
 use App\Models\Notification;
+use App\Models\Publisher\PubPayout;
 use App\Models\TransactionLog;
-use Barryvdh\DomPDF\Facade\Pdf;
 use App\Models\UserNotification;
 use Illuminate\Support\Facades\DB;
 use PHPMailer\PHPMailer\PHPMailer;
@@ -458,7 +457,7 @@ function ipaddressconrPayu($ip)
   $response = curl_exec($curl);
 
   $getCodes =  json_decode($response);
-  // $getCode = $getCodes->countryCode;
+
   $getCode = $getCodes->countryCode;
 
   $getdeatil = Country::where('iso', $getCode)->first();
@@ -518,11 +517,9 @@ function ipaddressconrAirpay($ip)
 
   $getCodes =  json_decode($response);
 
-  // $getCode = $getCodes->countryCode;
-  $getCode = "IN";
+  $getCode = $getCodes->countryCode;
 
   $getdeatil = Country::where('iso', $getCode)->first();
-
 
   if ($getdeatil) {
 
@@ -842,43 +839,37 @@ function getCouponTypeCodition($coupontype, $getcmpdata, $amoumt, $couponcode, $
 }
 
 function sendmailUser($subject, $body, $email)
-
 {
   $isHTML = true;
 
-        $mail = new PHPMailer();
+  $mail = new PHPMailer();
 
-        $mail->IsSMTP();
+  $mail->IsSMTP();
 
-        $mail->CharSet = 'UTF-8';
+  $mail->CharSet = 'UTF-8';
 
-        $mail->Host = 'smtp.gmail.com';
-        $mail->SMTPDebug = 0;
-        $mail->SMTPAuth = true;
+  $mail->Host       = 'smtp.gmail.com';
+  $mail->SMTPDebug  = 0;
+  $mail->SMTPAuth   = true;
+  $mail->Port       = 587;
+  $mail->Username   = 'adnan.logelite@gmail.com';
+  $mail->Password   = 'owdwgrcdwcrlissi';
+  $mail->setFrom('adnan.logelite@gmail.com', "7Search PPC");
+  $mail->addAddress($email);
 
-        $mail->Port = 587;
-        $mail->SMTPSecure = 'tls';
+  $mail->SMTPSecure = 'tls';
 
-        $mail->Username = 'adnan.logelite@gmail.com';
-        $mail->Password = 'owdwgrcdwcrlissi';
-
-        // From address and name
-        $mail->setFrom('adnan.logelite@gmail.com', '7Search PPC');
-        $mail->addAddress($email);
-
-        $mail->isHTML($isHTML);
-
-        $mail->Subject = $subject;
-        $mail->Body = $body;
+  $mail->isHTML($isHTML);
+  $mail->Subject = $subject;
+  $mail->Body    = $body;
 
   if ($mail->send()) {
-
     return 1;
   } else {
-
     return 0;
   }
 }
+
 
 function sendmailpaymentupdate($subject, $body, $emails)
 {
@@ -1415,7 +1406,7 @@ function userUpdateProfile($getreq, $id, $utype)
   $timestamp = date("Y-m-d H:i:s");
   $profileLog = [];
   $uid = $id;
-  $users = DB::table('users')->select('first_name', 'last_name', 'phone', 'phonecode', 'address_line1', 'address_line2', 'city', 'state', 'country', 'messenger_name', 'messenger_type', 'profile_lock', 'status', 'ac_verified', 'user_type','email')->where('uid', $uid)->where('status', 0)->where('ac_verified', 1)->first();
+  $users = DB::table('users')->select('first_name', 'last_name', 'phone', 'phonecode', 'address_line1', 'address_line2', 'city', 'state', 'country', 'messenger_name', 'messenger_type', 'profile_lock', 'status', 'ac_verified', 'user_type')->where('uid', $uid)->where('status', 0)->where('ac_verified', 1)->first();
   if (!empty($getreq['password'])) {
     $profileLog['reg_created']['previous'] = '-----';
     $profileLog['reg_created']['updated']  =  '-----';
@@ -1432,13 +1423,9 @@ function userUpdateProfile($getreq, $id, $utype)
       $profileLog['last_name']['previous'] = $users->last_name;
       $profileLog['last_name']['updated']  =  $getreq['last_name'];
     }
-    // if ($users->phone != $getreq['phone']) {
-    //   $profileLog['phone']['previous'] = $users->phone;
-    //   $profileLog['phone']['updated']  =  $getreq['phone'];
-    // }
-    if ($users->email != $getreq['email']) {
-      $profileLog['email']['previous'] = $users->email;
-      $profileLog['email']['updated']  =  $getreq['email'];
+    if ($users->phone != $getreq['phone']) {
+      $profileLog['phone']['previous'] = $users->phone;
+      $profileLog['phone']['updated']  =  $getreq['phone'];
     }
     if ($users->phonecode != $getreq['phonecode']) {
       $profileLog['phonecode']['previous'] = $users->phonecode;
@@ -1539,12 +1526,12 @@ function updateUserCampsAdunits($uid, $status)
 {
   $redisCon = Redis::connection('default');
   $user = DB::table('users')->select('user_type')->where('uid', $uid)->first();
-  //if ($user->user_type == 1 || $user->user_type == 3) {
+  if ($user->user_type == 1 || $user->user_type == 3) {
     $camp = DB::table('campaigns')->select('campaigns.campaign_id', 'campaigns.advertiser_code', 'campaigns.device_type', 'campaigns.device_os', 'campaigns.campaign_name', 'campaigns.ad_type', 'campaigns.social_ad_type', 'campaigns.ad_title', 'campaigns.ad_description', 'campaigns.target_url', 'campaigns.website_category', 'campaigns.daily_budget', 'campaigns.pricing_model', 'campaigns.cpc_amt',  'campaigns.country_ids', 'campaigns.country_code', 'campaigns.country_name', 'categories.display_brand')->join('categories', 'campaigns.website_category', '=', 'categories.id')->where('campaigns.advertiser_code', $uid)->where('campaigns.status', 2)->where('campaigns.trash', 0)->get()->toArray();
-  //}
-  //if ($user->user_type == 2 || $user->user_type == 3) {
+  }
+  if ($user->user_type == 2 || $user->user_type == 3) {
     $adunits = PubAdunit::select('website_category', 'uid', 'web_code', 'ad_code', 'grid_type', 'site_url', 'erotic_ads', 'alert_ads', 'ad_size')->where('uid', $uid)->where('status', 2)->get()->toArray();
-  //}
+  }
   if ($status == 0) {
     if (!empty($camp)) {
       foreach ($camp as $camps) {
@@ -1554,12 +1541,12 @@ function updateUserCampsAdunits($uid, $status)
         if ($camps->ad_type == 'banner' || $camps->ad_type == 'native' || $camps->ad_type == 'social') {
           $images = DB::table('ad_banner_images')->where('campaign_id', $camps->campaign_id)->get()->toArray();
           if ($camps->ad_type == 'social') {
-            $camps->image_path = env('STOREAD_IMAGE_URL', "").$images[0]->image_path;
+            $camps->image_path = $images[0]->image_path;
           } else {
             foreach ($images as $val) {
               $camps->images[$val->image_type] = [
                 "image_type" => $val->image_type,
-                "image_path" => env('STOREAD_IMAGE_URL', "").$val->image_path,
+                "image_path" => $val->image_path,
               ];
             }
           }
@@ -1595,12 +1582,12 @@ function updateBulkUserCampsAdunits($uids, $status)
   $redisCon = Redis::connection('default');
   foreach ($uids as $uid) {
     $user = DB::table('users')->select('user_type')->where('uid', $uid)->first();
-    // if ($user->user_type == 1 || $user->user_type == 3) {
+    if ($user->user_type == 1 || $user->user_type == 3) {
       $camp = DB::table('campaigns')->select('campaigns.campaign_id', 'campaigns.advertiser_code', 'campaigns.device_type', 'campaigns.device_os', 'campaigns.campaign_name', 'campaigns.ad_type', 'campaigns.social_ad_type', 'campaigns.ad_title', 'campaigns.ad_description', 'campaigns.target_url', 'campaigns.website_category', 'campaigns.daily_budget', 'campaigns.pricing_model', 'campaigns.cpc_amt',  'campaigns.country_ids', 'campaigns.country_code', 'campaigns.country_name', 'categories.display_brand')->join('categories', 'campaigns.website_category', '=', 'categories.id')->where('campaigns.advertiser_code', $uid)->where('campaigns.status', 2)->where('campaigns.trash', 0)->get()->toArray();
-    //}
-    //if ($user->user_type == 2 || $user->user_type == 3) {
+    }
+    if ($user->user_type == 2 || $user->user_type == 3) {
       $adunits = PubAdunit::select('website_category', 'uid', 'web_code', 'ad_code', 'grid_type', 'site_url', 'erotic_ads', 'alert_ads', 'ad_size')->where('uid', $uid)->where('status', 2)->get()->toArray();
-    //}
+    }
     if ($status == 'active') {
       if (!empty($camp)) {
         foreach ($camp as $camps) {
@@ -1610,12 +1597,12 @@ function updateBulkUserCampsAdunits($uids, $status)
           if ($camps->ad_type == 'banner' || $camps->ad_type == 'native' || $camps->ad_type == 'social') {
             $images = DB::table('ad_banner_images')->where('campaign_id', $camps->campaign_id)->get()->toArray();
             if ($camps->ad_type == 'social') {
-              $camps->image_path = env('STOREAD_IMAGE_URL', "").$images[0]->image_path;
+              $camps->image_path = $images[0]->image_path;
             } else {
               foreach ($images as $val) {
                 $camps->images[$val->image_type] = [
                   "image_type" => $val->image_type,
-                  "image_path" => env('STOREAD_IMAGE_URL', "").$val->image_path,
+                  "image_path" => $val->image_path,
                 ];
               }
             }
@@ -3460,7 +3447,7 @@ function checkPayAttempts($uid)
       // $adminmail1 = 'advertisersupport@7searchppc.com';
       $adminmail1 = 'rajeevgp1596@gmail.com';
       $adminmail2 = 'ry0085840@gmail.com';
-      $data['details'] = array('usersid' => $uid, 'payment_lock_at'=> date('d-m-Y, h:i:s A'));
+      $data['details'] = array('usersid' => $uid, 'payment_lock_at' => date('d-m-Y, h:i:s A'));
       $bodyadmin =   View('emailtemp.paymentlockadmin', $data);
       $subjectadmin = 'User Payment Page Access Blocked - Multiple Payment Attempts - 7Search PPC';
       sendmailAdmin($subjectadmin, $bodyadmin, $adminmail1, $adminmail2);
@@ -3485,15 +3472,15 @@ function checkPayAttempts($uid)
       $notification->status = 1;
       $notification->uid = $uid;
       if ($notification->save()) {
-          $noti = new UserNotification();
-          $noti->notifuser_id = gennotificationuseruniq();
-          $noti->noti_id = $notification->id;
-          $noti->user_id = $uid;
-          $noti->user_type = 1;
-          $noti->view = 0;
-          $noti->created_at = Carbon::now();
-          $noti->updated_at = now();
-          $noti->save();
+        $noti = new UserNotification();
+        $noti->notifuser_id = gennotificationuseruniq();
+        $noti->noti_id = $notification->id;
+        $noti->user_id = $uid;
+        $noti->user_type = 1;
+        $noti->view = 0;
+        $noti->created_at = Carbon::now();
+        $noti->updated_at = now();
+        $noti->save();
       }
     }
     $return['code']    = 102;
@@ -3506,238 +3493,155 @@ function checkPayAttempts($uid)
 }
 function onchangecpcValidation($typenames, $catnames, $countrys)
 {
-        $typename   = $typenames;
-        $catname    = $catnames;
-        if($countrys === 'All'){
-            $country    = []; 
-        }else{
-            $country[]    = $countrys;
-        }
-        // dd( $country);
-        $catid = Category::where('cat_name', $catname)->where('status', 1)->where('trash', 0)->first();
-        if (empty($catid)) {
-            $return['code'] = 101;
-            $return['message'] = 'Not Found Category Name!';
-            return json_encode($return);
-        }
-         if($typename != 'CPM' && $typename != 'CPC'){
-            $return['code'] = 101;
-            $return['message'] = 'Invalid type name, allow only- CPM or CPC!';
-            return json_encode($return);
-        }
-        $cpcid = $catid->id;
-        $query = DB::table('campaigns')
-        ->select('cpc_amt')
-        ->where('website_category', $cpcid)
-        ->where('trash', 0)
-        ->whereIn('status', [2, 4])
-        ->where('pricing_model', $typename)
-        ->orderBy('cpc_amt', 'DESC')
-        ->limit(5)
-        ->distinct()
-        ->get();
-        if (empty($country)) {
-            if ($typename == 'CPC') {
-                $cpcamt = $catid->cpc;
-                if (empty($query)) {
-                    $return['code'] = 200;
-                    $return['base_amt'] = $cpcamt;
-                    $return['high_amt'] = $cpcamt;
-                    $return['message'] = 'Successfully found !';
-                    return json_encode($return, JSON_NUMERIC_CHECK);
-                } else { 
-                    $campcpcamt = $query;
-                    $return['code'] = 200;
-                    $return['base_amt'] = $cpcamt;
-                    $return['high_amt'] = $campcpcamt;
-                    $return['message'] = 'Successfully found !';
-                }
-                return json_encode($return, JSON_NUMERIC_CHECK);
-            } elseif ($typename == 'CPM') {
-                $cpmamt = $catid->cpm;
-
-                if (empty($query)) {
-                    $return['code'] = 200;
-                    $return['base_amt'] = $cpmamt;
-                    $return['high_amt'] = $cpmamt;
-                    $return['message'] = 'Successfully found !';
-                    return json_encode($return, JSON_NUMERIC_CHECK);
-                } else {
-                    $campcpcamt = $query;
-                    $return['code'] = 200;
-                    $return['base_amt'] = $cpmamt;
-                    $return['high_amt'] = $campcpcamt;
-                    $return['message'] = 'Successfully found !';
-                }
-            } else {
-                $return['code'] = 101;
-                $return['message'] = 'Invalid Format';
-            }
-        }else{
-              if (is_array($country) && isset($country[0])) {
-                if (is_string($country[0])) {
-                    $decodedCountries = json_decode($country[0], true);
-                    if (is_array($decodedCountries)) {
-                        $country = array_map(function($item) {
-                            return $item['label'] ?? null;
-                        }, $decodedCountries);
-                        $country = array_filter($country);
-                    }
-                } else {
-                    $country = $country[0];
-                }
-            }
-            $pubrateData = DB::table('pub_rate_masters')
-                ->select(
-                    'category_id',
-                    'category_name',
-                    'country_name',
-                    DB::raw('MAX(ss_pub_rate_masters.cpm) as cpm_amt'),
-                    DB::raw('MAX(ss_pub_rate_masters.cpc) as cpc_amt')
-                )
-                ->where("category_name", $catname)
-                ->whereIn("country_name", $country)
-                ->where('status', 0)->first();
-            $cpmamt = $pubrateData->cpm_amt;
-            $cpcamt = $pubrateData->cpc_amt;
-            $cpcid = $pubrateData->category_id;
-            $query2 = DB::table('campaigns')
-            ->select(DB::raw('MAX(cpc_amt) as max_amt'))
-            ->where('website_category', $cpcid)
-            ->where('trash', 0)
-            ->where('status', 2)
-            ->where('pricing_model', $typename)
-            ->whereIn('country_name',$country)
-            ->first();
-            if(!empty($pubrateData) && !empty($cpmamt) && !empty($cpcamt))
-            {
-                if($typename == 'CPM')
-                {
-                    $return['code'] = 200;
-                    $return['base_amt'] = $cpmamt;
-                    $return['high_amt'] = $query;
-                    $return['message'] = "CPM Data found successfully.";
-                }
-                else {
-                    $return['code'] = 200;
-                    $return['base_amt'] = $cpcamt;
-                    $return['high_amt'] = $query;
-                    $return['message'] = "CPC Data found successfully.";
-                }
-            }
-            else
-            {
-                if ($typename == 'CPC') {
-                    $cpcamt = $catid->cpc;
-                    if (empty($query)) {
-                        $return['code'] = 200;
-                        $return['base_amt'] = $cpcamt;
-                        $return['high_amt'] = $cpcamt;
-                        $return['message'] = 'Successfully found !';
-                        return json_encode($return, JSON_NUMERIC_CHECK);
-                    } else {
-                        $campcpcamt = $query;
-                        $return['code'] = 200;
-                        $return['base_amt'] = $cpcamt;
-                        $return['high_amt'] = $campcpcamt;
-                        $return['message'] = 'Successfully found !';
-                    }
-                    return json_encode($return, JSON_NUMERIC_CHECK);
-                } elseif ($typename == 'CPM') {
-
-                    $cpmamt = $catid->cpm;
-
-                    if (empty($query)) {
-                        $return['code'] = 200;
-                        $return['base_amt'] = $cpmamt;
-                        $return['high_amt'] = $cpmamt;
-                        $return['message'] = 'Successfully found !';
-                        return json_encode($return, JSON_NUMERIC_CHECK);
-                    } else {
-                        $campcpcamt = $query;
-                        $return['code'] = 200;
-                        $return['base_amt'] = $cpmamt;
-                        $return['high_amt'] = $campcpcamt;
-                        $return['message'] = 'Successfully found !';
-                    }
-                } else {
-                    $return['code'] = 101;
-                    $return['message'] = 'Invalid Format';
-                }
-            }
-        }
+  $typename   = $typenames;
+  $catname    = $catnames;
+  $country[]    = $countrys;
+  $catid = Category::where('cat_name', $catname)->where('status', 1)->where('trash', 0)->first();
+  if (empty($catid)) {
+    $return['code'] = 101;
+    $return['message'] = 'Not Found Category Name!';
+    return json_encode($return);
+  }
+  if ($typename != 'CPM' && $typename != 'CPC') {
+    $return['code'] = 101;
+    $return['message'] = 'Invalid type name, allow only- CPM or CPC!';
+    return json_encode($return);
+  }
+  $cpcid = $catid->id;
+  $query = DB::table('campaigns')->select('cpc_amt')->where('website_category', $cpcid)->where('trash', 0)->whereIn('status', [2, 4])->where('pricing_model', $typename)->orderBy('cpc_amt', 'DESC')->limit(1)->distinct()->get();
+  if (empty($country)) {
+    if ($typename == 'CPC') {
+      $cpcamt = $catid->cpc;
+      if (empty($query)) {
+        $return['code'] = 200;
+        $return['base_amt'] = $cpcamt;
+        //   $return['high_amt'] = $cpcamt;
+        $return['message'] = 'Successfully found !';
+        return json_encode($return, JSON_NUMERIC_CHECK);
+      } else {
+        // $campcpcamt = $query->cpc_amt;
+        $campcpcamt = $query;
+        $return['code'] = 200;
+        $return['base_amt'] = $cpcamt;
+        //   $return['high_amt'] = $campcpcamt;
+        $return['message'] = 'Successfully found !';
+      }
       return json_encode($return, JSON_NUMERIC_CHECK);
-}
-function deviceValidating($dtype,$dos){
-  $res = [];
-  foreach ($dtype as $value) {
-      if ($value === 'Desktop') {
-          $res[] = ['apple', 'linux', 'windows'];
-      } elseif ($value === 'Mobile') {
-          $res[] = ['android', 'apple'];
-      } elseif ($value === 'Tablet') {
-          $res[] = ['android', 'apple'];
-      }
-  }
-  $uniqueOS = collect($res)->flatten()->unique()->values()->all();
-  $matchingValues = array_intersect($uniqueOS, $dos);
-  return $matchingValues;
-}
-// Transfer to Referral Partner Commission
-function referral_commission($uid, $referal_code, $amounts){
-  // == advertiser & both user ==
-  $user = User::whereNotNull("referal_code")->whereIn('user_type',[1,3])->first();
-  if($user){
-  $url = env('REFAPI_URL');
-    $refData = [
-        'user_id' => $uid,
-        'referral_code' => $referal_code,
-        'amount' => $amounts,
-        'transaction_type' => 'Payment',
-    ];
-    $curl = curl_init();
+    } elseif ($typename == 'CPM') {
 
-    curl_setopt_array($curl, [
-        CURLOPT_URL => $url,
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_CUSTOMREQUEST => "POST",
-        CURLOPT_POSTFIELDS => json_encode($refData),
-        CURLOPT_HTTPHEADER => [
-            "Content-Type: application/json"
-        ],
-    ]);
-    $response = curl_exec($curl);
-    curl_close($curl);
-  }
-  }
-  
-function actionUsersCrm($user,$cstatus){
-  if($user->user_type != 2 && $cstatus == 1){
-    if($user->user_type == 3 || $user->user_type == 4 || $user->trash == 0){
-        DB::table('campaigns')->where('advertiser_code', $user->uid)->where('status',2)->update(['status' => 4]);
-    }
-  }elseif($user->user_type != 1 && $cstatus == 2){
-      if($user->user_type == 3 || $user->user_type == 4 || $user->trash == 0){
-          $websiteIds = PubWebsite::where('uid', $user->uid)->where('status', 4)->pluck('web_code');      //use App\Models\PubWebsite;
-          DB::table('pub_websites')->where('uid', $user->uid)->where('status',4)->update(['status' => 7]); //use App\Models\PubAdunit;
-          PubAdunit::whereIn('web_code', $websiteIds)->where('status', 2)->update(['status' => 1]);
+      $cpmamt = $catid->cpm;
+
+      if (empty($query)) {
+        $return['code'] = 200;
+        $return['base_amt'] = $cpmamt;
+        //   $return['high_amt'] = $cpmamt;
+        $return['message'] = 'Successfully found !';
+        return json_encode($return, JSON_NUMERIC_CHECK);
+      } else {
+        $campcpcamt = $query;
+        $return['code'] = 200;
+        $return['base_amt'] = $cpmamt;
+        //   $return['high_amt'] = $campcpcamt;
+        $return['message'] = 'Successfully found !';
       }
+    } else {
+      $return['code'] = 101;
+      $return['message'] = 'Invalid Format';
+    }
+  } else {
+    $pubrateData = DB::table('pub_rate_masters')
+      ->select(
+        'category_id',
+        'category_name',
+        'country_name',
+        DB::raw('MAX(ss_pub_rate_masters.cpm) as cpm_amt'),
+        DB::raw('MAX(ss_pub_rate_masters.cpc) as cpc_amt')
+      )
+      ->where("category_name", $catname)
+      ->whereIn("country_name", $country)
+      ->where('status', 0)->first();
+    $cpmamt = $pubrateData->cpm_amt;
+    $cpcamt = $pubrateData->cpc_amt;
+    $cpcid = $pubrateData->category_id;
+    $query2 = DB::table('campaigns')
+      ->select(DB::raw('MAX(cpc_amt) as max_amt'))
+      ->where('website_category', $cpcid)
+      ->where('trash', 0)
+      ->where('status', 2)
+      ->where('pricing_model', $typename)
+      ->whereIn('country_name', $country)
+      ->first();
+    if (!empty($pubrateData) && !empty($cpmamt) && !empty($cpcamt)) {
+      if ($typename == 'CPM') {
+        $return['code'] = 200;
+        $return['base_amt'] = $cpmamt;
+        //   $return['high_amt'] = ($query2->max_amt > $cpmamt) ? $query2->max_amt : $cpmamt ;
+        //   $return['high_amt'] = $query;
+        $return['message'] = "CPM Data found successfully.";
+      } else {
+        $return['code'] = 200;
+        $return['base_amt'] = $cpcamt;
+        //   $return['high_amt'] = ($query2->max_amt > $cpcamt) ? $query2->max_amt : $cpcamt ;
+        //   $return['high_amt'] = $query;
+        $return['message'] = "CPC Data found successfully.";
+      }
+    } else {
+      if ($typename == 'CPC') {
+        $cpcamt = $catid->cpc;
+        if (empty($query)) {
+          $return['code'] = 200;
+          $return['base_amt'] = $cpcamt;
+          //   $return['high_amt'] = $cpcamt;
+          $return['message'] = 'Successfully found !';
+        } else {
+          $campcpcamt = $query;
+          $return['code'] = 200;
+          $return['base_amt'] = $cpcamt;
+          //   $return['high_amt'] = $campcpcamt;
+          $return['message'] = 'Successfully found !';
+        }
+        return json_encode($return, JSON_NUMERIC_CHECK);
+      } elseif ($typename == 'CPM') {
+        $cpmamt = $catid->cpm;
+        if (empty($query)) {
+          $return['code'] = 200;
+          $return['base_amt'] = $cpmamt;
+          //   $return['high_amt'] = $cpmamt;
+          $return['message'] = 'Successfully found !';
+        } else {
+          $campcpcamt = $query;
+          $return['code'] = 200;
+          $return['base_amt'] = $cpmamt;
+          //   $return['high_amt'] = $campcpcamt;
+          $return['message'] = 'Successfully found !';
+        }
+        return json_encode($return, JSON_NUMERIC_CHECK);
+      } else {
+        $return['code'] = 101;
+        $return['message'] = 'Invalid Format';
+      }
+    }
   }
+  return json_encode($return, JSON_NUMERIC_CHECK);
 }
-function getUserStatus($uid, $type)
+
+function generateInvoiceNumber()
 {
-    $userStatus = User::select('uid', 'status', 'trash')->where('uid', $uid)->where('user_type', '!=', $type)->first();
-    if (!$userStatus) {
-        return ['code' => 101,'message' => 'Something went wrong!'];
-    }
-    if ($userStatus->status == 3) {
-        return ['code' => 101,'message' => 'This account has been suspended.'];
-    }
-    if ($userStatus->status == 4) {
-        return ['code' => 101,'message' => 'This account has been Hold.'];
-    }
-    if ($userStatus->trash == 1) {
-        return ['code' => 101,'message' => 'This account has been Deleted.'];
-    }
-    return $userStatus;
+  $prefix = 'PUB';
+  $padding = 5;
+
+  $latestInvoice = PubPayout::where('invoice_number', 'LIKE', $prefix . '%')
+    ->orderBy('invoice_number', 'desc')
+    ->first();
+
+  if ($latestInvoice) {
+    $lastNumber = (int) substr($latestInvoice->invoice_number, strlen($prefix));
+    $newNumber = $lastNumber + 1;
+  } else {
+    $newNumber = 1;
+  }
+
+  $newInvoiceNumber = $prefix . str_pad($newNumber, $padding, '0', STR_PAD_LEFT);
+
+  return $newInvoiceNumber;
 }

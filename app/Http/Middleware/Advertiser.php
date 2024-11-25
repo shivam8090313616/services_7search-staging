@@ -17,58 +17,21 @@ class Advertiser
      * @param  \Closure(\Illuminate\Http\Request): (\Illuminate\Http\Response|\Illuminate\Http\RedirectResponse)  $next
      * @return \Illuminate\Http\Response|\Illuminate\Http\RedirectResponse
      */
-    public function handle(Request $request, Closure $next)
+        public function handle(Request $request, Closure $next)
     {
 
-        $origin = $request->headers->get('origin');
         $serkey = $_SERVER['HTTP_X_API_KEY']??'';
         $authtoken = base64_decode($request->header('Authorization'));
         $user_id = explode(".",$serkey);
         $uid = base64_decode($user_id[1]);
-        $user = DB::table('admins')->where('id',$uid)->first();
-        
-        // if(empty($user_id[2])){
-        //     return response()->json([
-        //         'code' => 101,
-        //         'msg' => 'Missing auth token or current token']);
-        // }
-        // if($user->api_access_token == $serkey){
-        //     return response()->json([
-        //         'error' => 'This API sources requests is not allowed!',
-        //     ], 403);
-        // }else{
-        //     DB::table('admins')->where('id', $uid)->update(['api_access_token' => $serkey]);
-        // }
-        // $currentToken = base64_decode($user_id[2]);
-        // $currentTokens = explode("+",$currentToken);
-        // $condition = '';
-        // foreach ($currentTokens as $key => $value) {
-        //     if (isset($value[1])) {
-        //         $values = explode(",",$value);
-        //         $valueKey = explode(" ",$values[1]);
-        //         $valuesKeys = explode(" ",$values[2]);
-        //         $crtKey = base64_decode($valueKey[1]);
-        //         $valKey = base64_decode($valuesKeys[2]);
-               
-        //         if(($crtKey == '$2y$10$geyShdgYUdMvPi8tU53Cheoq5DhYvBipzIPeJ4rfT/ibnHdjhGOZe' &&  $valKey == '$2y$10$v99ITu65nQGCBy1.KjBHxufO.FaGGWTPJQgO2ha3.XBAvlrFm9LGu')){
-        //             $condition = 'true';
-        //         }
-        //         if(($crtKey != '$2y$10$lrgWhbQUJg1QHW3q2OfmI.ZmnFhoRYn4r0BttXfhZgUeVePdoHj8m' && $valKey == '$2y$10$aHmmOlO1VMNbdVsvFFZPa.R.mxUnhGAO/NUGmDDD9k7Y58YYZ/8Z.')){
-        //             return response()->json([
-        //                 'code'=>105,
-        //                 'msg'=> 'Admin have been changed role permission!'
-        //             ]);
-        //         }
-        //     } 
-        // }
         if(empty($uid)){
             return response()->json([
                 'code' => 105,
                 'msg' => 'Invalid user']);
         }
-        $emprolestatus = DB::table("admins")->where('emp_id',$user->emp_id)->where('login_permission',1)->where('user_type',2)->value('login_permission');
-        //if($origin == 'https://crm.7searchppc.in' && $condition){
-        if($emprolestatus == 1){
+        $user = DB::table('admins')->where('id',$uid)->first();
+        $emprolestatus = DB::table("emp_clients_records")->where('emp_id',$user->emp_id)->where('role_status',1)->value('role_status');
+        if($emprolestatus == 1 && $user->user_type == 2){
             return response()->json([
                 'code'=>105,
                 'msg'=> 'Admin have been changed role permission!'
@@ -81,10 +44,52 @@ class Advertiser
                 'msg' => 'Api Key Empty'
                 ]);
         }
-        // }else {
-        //     return response()->json([
-        //         'error' => 'This API sources request is not allowed!',
-        //     ], 403);
+
+
+
+       /* $key = '7SAPI321';
+        $serkey = $_SERVER['HTTP_X_API_KEY'];
+        $authtoken = $_SERVER['HTTP_X_AUTH_TOKEN'];
+        $useradmin = Admin::where('remember_token',$authtoken)->count();
+        if(empty($serkey))
+        {
+         return response()->json([
+            'code' => 404,
+            'msg' => 'Api Key Empty']);
+        }
+        if($serkey == $key)
+        {
+            if($useradmin == 1)
+            {
+                return $next($request);
+            } else {
+                return response()->json([
+                    'code' => 105,
+                    'msg' => 'Invalid Auth Token']);
+            }
+        } else {
+            return response()->json([
+                'code' => 106,
+                'msg' => 'Invalid Api key']);
+        } */
+//////######################### Start comment code 20-01-2024 ##############################///////
+        // $key = 'cR9i43OnLk7r9Ty44QespV2h';
+        // $serkey = $_SERVER['HTTP_X_API_KEY'];
+        // if(empty($serkey))
+        // {
+        //  return response()->json([
+            //     'code' => 404,
+            //     'msg' => 'Api Key Empty']);
         // }
+        // if($serkey == $key)
+        // {
+        //     return $next($request);
+        // } 
+        // return response()->json([
+            //     'code' => 404,
+            //     'msg' => 'Api Key Empty']);
+
+
+     //////######################### Start comment code 20-01-2024 ##############################///////
     }
 }

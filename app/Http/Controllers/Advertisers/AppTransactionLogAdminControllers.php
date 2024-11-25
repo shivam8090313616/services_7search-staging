@@ -172,13 +172,13 @@ class AppTransactionLogAdminControllers extends Controller
             ->where('transactions.transaction_id', $transactionid)
             ->first();
         if ($report->payment_mode == 'bitcoin' || $report->payment_mode == 'stripe' || $report->payment_mode == 'now_payments' || $report->payment_mode == 'coinpay' || $report->payment_mode == 'tazapay') {
-            $report->fee = number_format($report->fee, 2, '.', '');
+            $report->fee = number_format($report->fee, 2);
         } else {
-            $report->fee = number_format($report->fee - $report->fees_tax, 2, '.', '');
+            $report->fee = number_format($report->fee - $report->fees_tax, 2);
         }
-        $report->gst = number_format($report->gst, 2, '.', '');
-        $report->payble_amt = number_format($report->payble_amt, 2, '.', '');
-        $report->subtotal = number_format($report->amount + $report->fee, 2 , '.', '');
+        $report->gst = number_format($report->gst, 2);
+        $report->payble_amt = number_format($report->payble_amt, 2);
+        $report->subtotal = number_format($report->amount + $report->fee, 2);
         if ($report) {
             $return['code']    = 200;
             $return['data']    = $report;

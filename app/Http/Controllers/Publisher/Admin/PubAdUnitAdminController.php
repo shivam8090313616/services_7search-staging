@@ -3,141 +3,16 @@
 namespace App\Http\Controllers\Publisher\Admin;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Request;
-use App\Models\AdImpression;
-use App\Models\PubWebsite;
 use App\Models\PubAdunit;
-use App\Models\Category;
-use App\Models\User;
+use App\Models\PubWebsite;
+use App\Models\AdImpression;
+use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
 class PubAdUnitAdminController extends Controller {
     
-    public function adUnitList(Request $request){
-        $sort_order = $request->sort_order;
-      	$col = $request->col;
-        $limit = $request->lim;
-        $page = $request->page; 
-        $src = $request->src;
-        $status = $request->status;
-        $websitecategory = $request->website_category;
-        $adtype = $request->ad_type;
-        $pg = $page - 1;
-        $start = ( $pg > 0 ) ? $limit * $pg : 0;
-        $currentDate = Carbon::now();
-        $startDate = $request->start_date;
-        $nfromdate = date('Y-m-d', strtotime($startDate));
-        $endDate =  date('Y-m-d', strtotime($request->end_date));
-
-        $data = PubAdunit::with(['user' => function($query){$query->select('id', 'email', 'uid');},'category' => function($query) {$query->select('id', 'cat_name');}])
-         ->select('id','ad_name','site_url','ad_code','ad_type','status','website_category','uid',
-         DB::raw('created_at as create_date'),
-         DB::raw('(IF(DATEDIFF("' . $currentDate . '", created_at) < 8, 1, 0)) as badge'))
-         ->withSum('pubstats as impressions', 'impressions')
-         ->withSum('pubstats as clicks', 'clicks')
-         ->whereDate('created_at', '>=', $nfromdate)
-         ->whereDate('created_at', '<=', $endDate)
-         ->when($request->status != '' && $request->category == '' && $request->ad_type == '',function($query) use ($status){
-            return $query->where('website_category', $status );
-         })
-         ->when($request->website_category != '' && $request->website_status == '' && $request->ad_type == '', function($query) use ($websitecategory){
-            return $query->where( 'website_category', $websitecategory );
-         })
-         ->when($request->ad_type != '' && $request->website_category == '' && $request->website_status == '' , function($query) use ($adtype){
-           return  $query->where( 'ad_type', $adtype );
-         })
-         ->when($request->website_category != '' && $request->status != ''  , function($query) use ($status,$websitecategory){
-           return $query->where('status', $status)->where('website_category', $websitecategory);
-         })
-         ->when($request->website_category != '' && $request->ad_type != '' , function($query) use ($adtype,$websitecategory){
-           return  $query->where( 'ad_type', $adtype )->where( 'website_category', $websitecategory );
-         })
-         ->when($request->status != '' && $request->ad_type != '' , function($query) use ($adtype,$status){
-           return $query->where( 'ad_type', $adtype)->where( 'status', $status);
-         })
-         ->when($request->status != '' && $request->ad_type != '' && $request->website_category != '' , function($query) use ($adtype,$status,$websitecategory){
-           return $query->where('ad_type',$adtype)->where('status',$status)->where('website_category',$websitecategory);
-         })
-         ->when($startDate && $endDate && !$src, function($query) use($nfromdate,$endDate){
-          return  $query->whereDate('created_at', '>=', $nfromdate)->whereDate('created_at', '<=', $endDate);
-         })
-         ->when($src , function($query) use($src){
-            return $query->where(function ($query) use ($src) {
-                $query
-                    ->whereRaw(
-                        "concat(site_url, status, ad_name, ad_code) like ?",
-                        ["%{$src}%"]
-                    )
-                    ->orWhereHas("user", function ($query) use ($src) {
-                        $query->whereRaw(
-                            "concat(email, uid) like ?",
-                            ["%{$src}%"]
-                        );
-                    });
-            });
-         })
-        ->when($col, function($query) use ($col, $sort_order) {
-            switch ($col) {
-                case 'impressions':
-                    return $query->orderBy('impressions', $sort_order);
-                case 'clicks':
-                    return $query->orderBy('clicks', $sort_order);
-                case 'email':
-                    return $query->orderBy(
-                        User::select('email')
-                            ->whereColumn('users.uid', 'pub_adunits.uid')
-                            ->limit(1), 
-                        $sort_order
-                    );
-                case 'category':
-                    return $query->orderBy(
-                        Category::select('cat_name')
-                            ->whereColumn('categories.id', 'pub_adunits.website_category')
-                            ->limit(1),
-                        $sort_order
-                    );
-                case 'created_at':
-                    return $query->orderBy('create_date', $sort_order);
-                default:
-                    return $query->orderBy($col, $sort_order);
-            }
-        }, function($query) {
-            return $query->orderBy('id', 'DESC');
-        });
-        $data = $data->offset($start)->limit($limit)->get();
-        $row = PubAdunit::count();
-        $data = $data->map(function ($result) {
-            return [
-                "id" => $result->id,
-                "ad_name" => $result->ad_name,
-                "user_email" => $result->user->email,
-                "site_url" => $result->site_url,
-                "ad_code" => $result->ad_code,
-                "ad_type" => $result->ad_type,
-                "status" => $result->status,
-                "website_category" => $result->website_category,
-                "user_id" => $result->user->uid,
-                "create_date" => $result->create_date,
-                "badge" => $result->badge,
-                "impressions" => $result->impressions ?? 0,
-                "clicks" => $result->clicks ?? 0,
-                "category" => $result->category->cat_name ?? null,
-            ];
-        });
-         if ( count( $data ) > 0 ) {
-            $return[ 'code' ] = 200;
-            $return[ 'data' ] = $data;
-          	$return[ 'row' ]  = $row;
-          	$return[ 'message' ] = 'Data Successfully found!';
-        } else {
-            $return[ 'code' ] = 101;
-            $return[ 'message' ] = 'Data Not found!';
-        }
-        return json_encode($return, JSON_NUMERIC_CHECK);
-     }
-    
-    public function adUnitListTest(Request $request) {
+    public function adUnitList(Request $request) {
       	$sort_order = $request->sort_order;
       	$col = $request->col;
         $limit = $request->lim;

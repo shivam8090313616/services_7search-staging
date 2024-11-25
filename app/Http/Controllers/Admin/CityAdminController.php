@@ -8,33 +8,9 @@ use App\Models\Country;
 use App\Models\State;
 use App\Models\City;
 use Illuminate\Support\Facades\Validator;
-use Illuminate\Support\Facades\DB;
 
 class CityAdminController extends Controller
 {
-    
-    
-      public function inststatus()
-    {
-     
-        $getData = DB::table('states')->get();
-        foreach($getData as $getValue) {
-            DB::table('newcities')
-            ->where('state_name', $getValue->name) 
-            ->update(array('state_id' => $getValue->id));
-        }
-      
-
-       
-        // $getData = DB::table('countries')->get();
-        // foreach($getData as $getValue) {
-        //     DB::table('newcities')
-        //     ->where('country_code', $getValue->iso) 
-        //     ->update(array('country_id' => $getValue->id));
-        // }
-     
-    }
-    
     public function getstate(Request $request){
         $validator = Validator::make(
             $request->all(),

@@ -54,9 +54,7 @@ return [
     */
 
     'url' => env('APP_URL', 'https://services.7searchppc.in/'),
-    // 'url' => env('APP_URL', 'http://127.0.0.1:8000/'),
   	'advertiser_url' => env('ADVER_URL', 'https://advertiser.7searchppc.in/'),
-  	// 'advertiser_url' => env('ADVER_URL', 'http://localhost:3000/'),
   	'publisher_url' => env('PUB_URL', 'https://publisher.7searchppc.in/'),
   	'admin_url' => env('ADMIN_URL', 'https://crm.7searchppc.in/'),
 
@@ -145,7 +143,6 @@ return [
         /*
          * Laravel Framework Service Providers...
          */
-        App\Providers\AccVerifiedServiceProvider::class,
         Illuminate\Auth\AuthServiceProvider::class,
         Illuminate\Broadcasting\BroadcastServiceProvider::class,
         Illuminate\Bus\BusServiceProvider::class,

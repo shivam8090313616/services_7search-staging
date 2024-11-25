@@ -221,7 +221,7 @@ class PubUserAdminController extends Controller
     $col = $request->col;
 
     $userdetail = DB::table('users')
-      ->select(DB::raw("CONCAT(ss_users.first_name, ' ', ss_users.last_name) as name"), 'users.id', 'users.email', 'users.user_type', 'users.website_category', 'users.status', 'users.pub_wallet', 'users.wallet', 'users.withdrawl_limit', 'users.phone', 'users.uid', 'users.address_line1', 'users.city', 'users.state', 'users.country', 'users.account_type', 'users.ac_verified', 'users.user_photo', 'users.user_photo_id', 'users.photo_verified', 'users.profile_lock', 'users.photo_id_verified', 'users.created_at', 'categories.cat_name', 'users.messenger_name', 'users.messenger_type')
+      ->select(DB::raw("CONCAT(ss_users.first_name, ' ', ss_users.last_name) as name"), 'users.id', 'users.email', 'users.user_type', 'users.website_category', 'users.status', 'users.pub_wallet', 'users.wallet', 'users.withdrawl_limit', 'users.phone', 'users.uid', 'users.address_line1', 'users.city', 'users.state', 'users.country', 'users.account_type', 'users.ac_verified', 'users.user_photo', 'users.user_photo_id', 'users.user_pan', 'users.photo_verified', 'users.profile_lock', 'users.photo_id_verified', 'users.pan_verified', 'users.created_at', 'categories.cat_name', 'users.messenger_name', 'users.messenger_type')
       ->where('users.trash', 0)
       ->join('categories', 'users.website_category', '=', 'categories.id')
       ->where('users.uid', $uid)
@@ -693,8 +693,6 @@ class PubUserAdminController extends Controller
       $return['message'] = 'Something went wrong!';
     }
 
-
-
     return json_encode($return, JSON_NUMERIC_CHECK);
   }
 
@@ -727,15 +725,18 @@ class PubUserAdminController extends Controller
         'users.uid',
         'users.user_photo',
         'users.user_photo_id',
+        'users.user_pan',
         'users.photo_verified',
         'users.photo_id_verified',
+        'users.pan_verified',
         'users.country',
         'users.account_type'
       )
       ->where('users.trash', 0)
       ->where(function ($query) {
         $query->where('photo_verified', '!=', 0)
-          ->orWhere('photo_id_verified', '!=', 0);
+          ->orWhere('photo_id_verified', '!=', 0)
+          ->orWhere('pan_verified', '!=', 0);
       });
     if (strlen($country) > 0) {
       $query->where('users.country', $country);
@@ -754,11 +755,16 @@ class PubUserAdminController extends Controller
     if (strlen($photoStatus) > 0) {
       $query->where(function ($q) use ($photoStatus) {
         $q->where('photo_id_verified', $photoStatus)
-          ->orWhere('photo_verified', $photoStatus);
+          ->orWhere('photo_verified', $photoStatus)
+          ->orWhere('pan_verified', $photoStatus);
       });
     }
 
-    if ($carboneDate && $carbonsDate && !$search && !$accountType && !$photoStatus) {
+    // if ($carboneDate && $carbonsDate && !$search && !$accountType && !$photoStatus) {
+    //   $query->whereDate('users.updated_at', '>=', $carbonsDate)
+    //     ->whereDate('users.updated_at', '<=', $carboneDate);
+    // }
+    if ($carboneDate && $carbonsDate) {
       $query->whereDate('users.updated_at', '>=', $carbonsDate)
         ->whereDate('users.updated_at', '<=', $carboneDate);
     }
@@ -832,15 +838,19 @@ class PubUserAdminController extends Controller
     $useridas = $request->uid;
     $statusphoto = $acntupdate->photo_verified;
     $statusid = $acntupdate->photo_id_verified;
+    $statuspan = $acntupdate->pan_verified;
     $statustype = $request->status_type;
     if ($phototype == 1) {
       $acntupdate->photo_id_verified = $request->status_type;
       $acntupdate->user_photo_id_remark = $request->remark;
-    } else {
+    } else if ($phototype == 2) {
       $acntupdate->photo_verified = $request->status_type;
       $acntupdate->user_photo_remark = $request->remark;
+    } else if ($phototype == 3) {
+      $acntupdate->pan_verified = $request->status_type;
+      $acntupdate->user_pan_remark = $request->remark;
     }
-    if ($phototype == 2 && $statustype == $statusphoto || $phototype == 1 && $statustype == $statusid) {
+    if (($phototype == 3 && $statustype == $statuspan) || ($phototype == 2 && $statustype == $statusphoto) || ($phototype == 1 && $statustype == $statusid)) {
       return response()->json([
         'status' => false,
         'alrdmessage' => 'This status is already selected.'
@@ -852,8 +862,10 @@ class PubUserAdminController extends Controller
       $doclog->uid = $request->uid;
       if ($phototype == 1) {
         $doclog->doc_type = 'Id Proof';
-      } else {
+      } else if ($phototype == 2) {
         $doclog->doc_type = 'Selfie';
+      } else if ($phototype == 3) {
+        $doclog->doc_type = 'PAN Card';
       }
       $doclog->status = $request->status_type;
       $doclog->remark = $request->remark;
@@ -866,12 +878,19 @@ class PubUserAdminController extends Controller
           $subject = 'KYC Rejection Notice: ' . $doclog->doc_type . ' Issue - 7Search PPC';
           $body =  View('emailtemp.pubdockycrejectidproof', $data);
           sendmailUser($subject, $body, $email);
-        } else {
+        } else if ($phototype == 2) {
           $noti_title = 'KYC Rejection Notice: Photo Issue- 7Search PPC ';
           $noti_desc  = 'We regret to inform you that your KYC submission has been rejected due to an issue with the photo provided. In order to proceed with your application, please resubmit your KYC documents with clear and valid photo identification.';
-          $data['details'] = array('subject' => 'KYC Rejection Notice For Photo - 7Search PPC ', 'fullname' => $fullname,  'usersid' => $useridas, 'doctype' => 'Photo');
+          $data['details'] = array('subject' => 'KYC Rejection Notice For' . $doclog->doc_type .  '- 7Search PPC ', 'fullname' => $fullname,  'usersid' => $useridas, 'doctype' => $doclog->doc_type);
           $subject = 'KYC Rejection Notice: Photo Issue - 7Search PPC';
           $body =  View('emailtemp.pubdockycrejectphoto', $data);
+          sendmailUser($subject, $body, $email);
+        } else if ($phototype == 3) {
+          $noti_title = 'KYC Rejection Notice: PAN Card Issue- 7Search PPC ';
+          $noti_desc  = 'We regret to inform you that your KYC submission has been rejected due to an issue with the PAN Card provided. In order to proceed with your application, please resubmit your KYC documents with clear and valid photo identification.';
+          $data['details'] = array('subject' => 'KYC Rejection Notice For' . $doclog->doc_type .  '- 7Search PPC ', 'fullname' => $fullname,  'usersid' => $useridas, 'doctype' => $doclog->doc_type);
+          $subject = 'KYC Rejection Notice: PAN Card Issue - 7Search PPC';
+          $body =  View('emailtemp.pubdockycrejectpan', $data);
           sendmailUser($subject, $body, $email);
         }
       } else if ($request->status_type == 2) {
@@ -882,12 +901,19 @@ class PubUserAdminController extends Controller
           $subject = 'Congratulations! Your ID Proof Verification Completed For KYC - 7Search PPC';
           $body =  View('emailtemp.pubdockyacceptedidproof', $data);
           sendmailUser($subject, $body, $email);
-        } else {
+        } else if ($phototype == 2) {
           $noti_title = 'Congratulations! Your Photo Verification Completed For KYC- 7Search PPC';
           $noti_desc  = "We're thrilled to inform you that our administrative team has successfully accepted the photo provided for Know Your Customer (KYC) compliance purposes.";
           $data['details'] = array('subject' => 'KYC Accepted Notice For' . $doclog->doc_type . '- 7Search PPC ', 'fullname' => $fullname,  'usersid' => $useridas, 'doctype' => $doclog->doc_type);
           $subject = 'Congratulations! Your Photo Verification Completed For KYC- 7Search PPC';
           $body =  View('emailtemp.pubdockyacceptedphoto', $data);
+          sendmailUser($subject, $body, $email);
+        } else if ($phototype == 3) {
+          $noti_title = 'Congratulations! Your PAN Card Verification Completed For KYC- 7Search PPC';
+          $noti_desc  = "We're thrilled to inform you that our administrative team has successfully accepted the PAN Card provided for Know Your Customer (KYC) compliance purposes.";
+          $data['details'] = array('subject' => 'KYC Accepted Notice For' . $doclog->doc_type . '- 7Search PPC ', 'fullname' => $fullname,  'usersid' => $useridas, 'doctype' => $doclog->doc_type);
+          $subject = 'Congratulations! Your PAN Card Verification Completed For KYC- 7Search PPC';
+          $body =  View('emailtemp.pubdockyacceptedpan', $data);
           sendmailUser($subject, $body, $email);
         }
       } else {
@@ -982,12 +1008,79 @@ class PubUserAdminController extends Controller
     return json_encode($return, JSON_NUMERIC_CHECK);
   }
 
+  // public function pubWithdrawlCron()
+  // {
+  //   $redisCon = Redis::connection('default');
+  //   $withdrawlUser = DB::table('users')
+  //     ->select(
+  //       'users.id',
+  //       'users.uid',
+  //       'users.pub_wallet',
+  //       'pub_user_payout_modes.pub_withdrawl_limit as amount',
+  //       'pub_user_payout_modes.payout_name'
+  //     )
+  //     ->join('pub_user_payout_modes', 'users.uid', 'pub_user_payout_modes.publisher_id')
+  //     ->whereRaw('ss_pub_user_payout_modes.pub_withdrawl_limit > 0')
+  //     ->whereRaw('ss_users.pub_wallet >= ss_pub_user_payout_modes.pub_withdrawl_limit')
+  //     ->where('users.account_type', '!=', 1)
+  //     ->where('users.user_type', '!=', 1)
+  //     ->where('users.status', 0)
+  //     ->where('pub_user_payout_modes.status', 1)
+  //     ->get();
+  //   $row = $withdrawlUser->count();
+  //   if ($row != null) {
+  //     foreach ($withdrawlUser  as $users) {
+  //       $currentDate = Carbon::now();
+  //       $newDate = $currentDate->addWeeks(2);
+  //       if ($newDate->day >= 15) {
+  //         $releaseDate = $newDate->addMonthNoOverflow()->startOfMonth();
+  //       } else {
+  //         $releaseDate = $newDate->startOfMonth()->addDays(14);
+  //       }
+  //       $pubTxnId = 'PUBTXN' . strtoupper(uniqid(15));
+  //       $pubtransac           = new PubPayout();
+  //       $pubtransac->transaction_id   = $pubTxnId;
+  //       $pubtransac->publisher_id   = $users->uid;
+  //       $pubtransac->amount       = $users->pub_wallet;
+  //       $pubtransac->payout_method   = $users->payout_name;
+  //       $pubtransac->status       = 0;
+  //       $pubtransac->release_date   = $releaseDate;
+  //       //   DB::table('users')->where('uid', $users->uid)->decrement('pub_wallet', $users->pub_wallet);
+  //       DB::table('users')
+  //         ->where('uid', $users->uid)
+  //         ->update(['pub_wallet' => DB::raw('pub_wallet - ' . $users->pub_wallet)]);
+  //       //Deduct Publisher amount from from Redis
+  //       $redisCon->rawCommand('hincrbyfloat', 'pub_wallet',  $users->uid, '-' . $users->pub_wallet);
+  //       if ($pubtransac->save()) {
+  //         $return['code'] = 200;
+  //         $return['message'] = 'Data added to payout table';
+  //       } else {
+  //         $return['code'] = 101;
+  //         $return['message'] = 'Something went wrong!';
+  //       }
+  //     }
+  //   } else {
+  //     $return['code'] = 101;
+  //     $return['message'] = 'User not found!';
+  //   }
+  //   return json_encode($return, JSON_NUMERIC_CHECK);
+  // }
+
   public function pubWithdrawlCron()
   {
-    $redisCon = Redis::connection('default');
+    // Connect to Redis if the environment is not local or if a specific flag is set
+    if (app()->environment('production', 'staging') || env('USE_REDIS', true)) {
+      $redisCon = Redis::connection('default');
+    }
+
     $withdrawlUser = DB::table('users')
-      ->select('users.id', 'users.uid', 'users.pub_wallet', 'pub_user_payout_modes.pub_withdrawl_limit as amount', 'pub_user_payout_modes.payout_name'
-)
+      ->select(
+        'users.id',
+        'users.uid',
+        'users.pub_wallet',
+        'pub_user_payout_modes.pub_withdrawl_limit as amount',
+        'pub_user_payout_modes.payout_name'
+      )
       ->join('pub_user_payout_modes', 'users.uid', 'pub_user_payout_modes.publisher_id')
       ->whereRaw('ss_pub_user_payout_modes.pub_withdrawl_limit > 0')
       ->whereRaw('ss_users.pub_wallet >= ss_pub_user_payout_modes.pub_withdrawl_limit')
@@ -996,9 +1089,10 @@ class PubUserAdminController extends Controller
       ->where('users.status', 0)
       ->where('pub_user_payout_modes.status', 1)
       ->get();
+
     $row = $withdrawlUser->count();
     if ($row != null) {
-      foreach ($withdrawlUser  as $users) {
+      foreach ($withdrawlUser as $users) {
         $currentDate = Carbon::now();
         $newDate = $currentDate->addWeeks(2);
         if ($newDate->day >= 15) {
@@ -1006,20 +1100,26 @@ class PubUserAdminController extends Controller
         } else {
           $releaseDate = $newDate->startOfMonth()->addDays(14);
         }
+
         $pubTxnId = 'PUBTXN' . strtoupper(uniqid(15));
-        $pubtransac           = new PubPayout();
-        $pubtransac->transaction_id   = $pubTxnId;
-        $pubtransac->publisher_id   = $users->uid;
-        $pubtransac->amount       = $users->pub_wallet;
-        $pubtransac->payout_method   = $users->payout_name;
-        $pubtransac->status       = 0;
-        $pubtransac->release_date   = $releaseDate;
-        //   DB::table('users')->where('uid', $users->uid)->decrement('pub_wallet', $users->pub_wallet);
+        $pubtransac = new PubPayout();
+        $pubtransac->transaction_id = $pubTxnId;
+        $pubtransac->publisher_id = $users->uid;
+        $pubtransac->amount = $users->pub_wallet;
+        $pubtransac->payout_method = $users->payout_name;
+        $pubtransac->status = 0;
+        $pubtransac->release_date = $releaseDate;
+
+        // Update user's wallet in DB
         DB::table('users')
           ->where('uid', $users->uid)
           ->update(['pub_wallet' => DB::raw('pub_wallet - ' . $users->pub_wallet)]);
-        //Deduct Publisher amount from from Redis
-        $redisCon->rawCommand('hincrbyfloat', 'pub_wallet',  $users->uid, '-' . $users->pub_wallet);
+
+        // Deduct from Redis only if connected
+        if (isset($redisCon)) {
+          $redisCon->rawCommand('hincrbyfloat', 'pub_wallet', $users->uid, '-' . $users->pub_wallet);
+        }
+
         if ($pubtransac->save()) {
           $return['code'] = 200;
           $return['message'] = 'Data added to payout table';
@@ -1206,13 +1306,11 @@ class PubUserAdminController extends Controller
     $pg = $page - 1;
     $start = ($pg > 0) ? $limit * $pg : 0;
     $data = PubDocumentLog::select('uid', 'doc_type', 'doc_name', 'status', 'created_at', 'remark')
-      ->where('uid', $uid)
-      ->offset($start)
-      ->limit($limit)
-      ->orderBy('id', 'DESC')
-      ->get();
+      ->where('uid', $uid);
 
     $count = $data->count();
+    $data  = $data->offset($start)->limit($limit)->orderBy('id', 'DESC')->get();
+
     if (!empty($data)) {
       $return['message'] = "Kyc log found successfully!";
       $return['data'] = $data;

@@ -1,159 +1,92 @@
 <?php
 
 namespace App\Http\Controllers\Advertisers;
-
 use App\Http\Controllers\Controller;
-use App\Mail\CreateCampMail;
-use App\Mail\CreateCampMailAdmin;
-use App\Models\Activitylog;
 use App\Models\AdBannerImage;
 use App\Models\Campaign;
-use App\Models\CampaignLogs;
 use App\Models\Category;
+use App\Models\Activitylog;
 use App\Models\Country;
-use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Mail;
+use App\Mail\CreateCampMail;
+use App\Mail\CreateCampMailAdmin;
+use App\Models\User;
 use Exception;
 
 class AppCampaignControllers extends Controller
+
 {
-    private function logActivity($uid, $type, $description, $campaign_id)
-    {
-        $activitylog = new Activitylog();
-        $activitylog->uid = $uid;
-        $activitylog->type = $type;
-        $activitylog->description = $description;
-        $type == 'Added Campaign' ? '' . $campaign_id . ' is Added Successfully' : '' . $campaign_id . ' is edit Successfully';
-        $activitylog->status = '1';
-        $activitylog->save();
-    }
-
-    private function getCampaignTypePrefix($adType)
-    {
-        $adTypeMapping = [
-            'text' => 'CMPT',
-            'banner' => 'CMPB',
-            'native' => 'CMPN',
-            'video' => 'CMPV',
-            'popup' => 'CMPP',
-            'social' => 'CMPS',
-        ];
-        return $adTypeMapping[$adType] ?? 'Invalid';
-    }
-
-    private function sendCampaignEmail($campaign, $uid, $isUpdate = false)
-    {
-        $user = DB::table('users')->select('email', 'first_name', 'last_name')->where('uid', $uid)->first();
-        $email = $user->email;
-        $fullname = $user->first_name . ' ' . $user->last_name;
-
-        $subject = $isUpdate ? 'Campaign Updated Successfully - 7Search PPC' : 'Campaign Created successfully - 7Search PPC';
-
-        $data['details'] = array(
-            'subject' => $subject,
-            'fullname' => $fullname,
-            'usersid' => $campaign->advertiser_code,
-            'campaignid' => $campaign->campaign_id,
-            'campaignname' => $campaign->campaign_name,
-            'campaignadtype' => $campaign->ad_type
-        );
-
-        $body = View('emailtemp.campaigncreate', $data);
-        sendmailUser($subject, $body, $email);
-    }
-
-    private function sendAdminEmail($campaign, $isUpdate = false)
-    {
-        $adminmail1 = 'advertisersupport@7searchppc.com';
-        $adminmail2 = 'info@7searchppc.com';
-
-        $subject = $isUpdate ? 'Campaign Updated Successfully - 7Search PPC' : 'Campaign Created successfully - 7Search PPC';
-
-        $data['details'] = array(
-            'subject' => $subject,
-            'fullname' => $campaign->campaign_name,
-            'usersid' => $campaign->advertiser_code,
-            'campaignid' => $campaign->campaign_id,
-            'campaignname' => $campaign->campaign_name,
-            'campaignadtype' => $campaign->ad_type
-        );
-
-        $bodyadmin = View('emailtemp.campaigncreateadmin', $data);
-        sendmailAdmin($subject, $bodyadmin, $adminmail1, $adminmail2);
-    }
-
     /* Text Campaign Funtions */
     public function storeText(Request $request)
     {
         $validator = Validator::make(
-            $request->all(),
+            $request->all() , 
             [
-                'uid' => 'required',
-                'ad_type' => 'required',
-                'campaign_name' => 'required',
-                'website_category' => 'required',
-                'device_type' => 'required',
-                'device_os' => 'required',
-                'ad_title' => 'required',
-                'ad_description' => 'required',
-                'target_url' => 'required',
-                'countries' => 'required',
-                'pricing_model' => 'required',
-                'daily_budget' => 'required|numeric|min:15',
-                'cpc_amt' => ($request->countries == 'All') ? ['required', 'numeric', 'gte:0.0001'] : ['required', 'numeric', 'gte:0.000001'],
-            ], [
-                'cpc_amt.numeric' => 'The cpc_amt field must be a number.',
-                'cpc_amt.gte' => 'The cpc_amt field must be greater than or equal to 0.0001.',
-            ]
-        );
-        if ($validator->fails()) {
+                    'uid'               => 'required', 
+                    'ad_type'           => 'required', 
+                    'campaign_name'     => 'required',
+                    'website_category'  => 'required', 
+                    'device_type'       => 'required',
+                    'device_os'         => 'required', 
+                    'ad_title'          => 'required', 
+                    'ad_description'    => 'required',
+                    'target_url'        => 'required',
+                    'countries'         => 'required',
+                    'pricing_model'     => 'required', 
+                    'daily_budget'      => 'required|numeric|min:15',
+                    'cpc_amt'           => ($request->countries == 'All') ? ['required','numeric', 'gte:0.0001'] : ['required','numeric', 'gte:0.000001'],
+                 ],[
+                    'cpc_amt.numeric' => 'The cpc_amt field must be a number.',
+                    'cpc_amt.gte' => 'The cpc_amt field must be greater than or equal to 0.0001.',
+                  ]);
+        if ($validator->fails())
+        {
             $return['code'] = 100;
             $return['error'] = $validator->errors();
             $return['msg'] = 'Validation Error';
             return json_encode($return);
         }
         $catid = Category::select('cat_name')->where('id', $request->website_category)->where('status', 1)->where('trash', 0)->first();
-        $result = onchangecpcValidation($request->pricing_model, $catid->cat_name, $request->countries);
+        $result = onchangecpcValidation($request->pricing_model,$catid->cat_name,$request->countries);
         $arrResult = json_decode($result);
         $base_amt = $arrResult->base_amt;
-        if ($request->countries == 'All' && $request->cpc_amt < $base_amt) {
-            $return['code'] = 101;
+        if($request->countries == 'All' && $request->cpc_amt < $base_amt){
+            $return['code']    = 101;
             $return['message'] = 'Error! Invalid Bidding Amount.';
             return json_encode($return);
-        } else if ($request->countries != 'All' && $request->cpc_amt < $base_amt) {
-            $return['code'] = 101;
+        }else if($request->countries != 'All' && $request->cpc_amt < $base_amt){
+            $return['code']    = 101;
             $return['message'] = 'Error! Invalid Bidding Amount.';
             return json_encode($return);
-        }
+        }       
         $campaign = new Campaign();
         $campaign->ad_type = $request->ad_type;
-        $campaign->campaign_resource = 'app';
-        // if ($request->ad_type == 'text'){
-        //     $aType = 'CMPT';
-        // }elseif ($request->ad_type == 'banner'){
-        //     $aType = 'CMPB';
-        // }elseif ($request->ad_type == 'native'){
-        //     $aType = 'CMPN';
-        // } elseif ($request->ad_type == 'video'){
-        //     $aType = 'CMPV';
-        // }elseif ($request->ad_type == 'popup'){
-        //     $aType = 'CMPP';
-        // } elseif ($request->ad_type == 'social'){
-        //     $aType = 'CMPS';
-        // }else{
-        //     $aType = 'Invalid';
-        // }
-        $user = DB::table('users')
-            ->select('id', 'first_name', 'last_name', 'email')
+        if ($request->ad_type == 'text'){
+            $aType = 'CMPT';
+        }elseif ($request->ad_type == 'banner'){
+            $aType = 'CMPB';
+        }elseif ($request->ad_type == 'native'){
+            $aType = 'CMPN';
+        } elseif ($request->ad_type == 'video'){
+            $aType = 'CMPV';
+        }elseif ($request->ad_type == 'popup'){
+            $aType = 'CMPP';
+        } elseif ($request->ad_type == 'social'){
+            $aType = 'CMPS';
+        }else{
+            $aType = 'Invalid';
+        }
+        $user = DB::table('users')->select('id', 'first_name', 'last_name', 'email')
             ->where('uid', $request->uid)
             ->first();
-        if ($request->countries != 'All') {
+        if ($request->countries != 'All')
+        {
             $targetCountries = json_decode($request->countries);
             // foreach ($targetCountries as $value)
             // {
@@ -163,25 +96,26 @@ class AppCampaignControllers extends Controller
             //     $cuntry_lists[] = Country::select('id as value', 'name as label', 'phonecode as phonecode')->where('id', $value)->first();
             // }
             // $campaign->country_name = implode(",", $res);
-            // $campaign->country_ids = implode(",", $ress);
+             // $campaign->country_ids = implode(",", $ress);
             // $campaign->countries = json_encode($cuntry_lists);
-            foreach ($targetCountries as $value) {
+               foreach ($targetCountries as $value)
+            {
                 $cuntry_list = Country::where('name', $value)->first();
                 $res[] = $cuntry_list->name;
                 $ress[] = $cuntry_list->id;
                 $cuntry_lists[] = Country::select('id as value', 'name as label', 'phonecode as phonecode')->where('name', $value)->first();
             }
-            $campaign->country_name = implode(',', $res);
-            $campaign->country_ids = implode(',', $ress);
+            $campaign->country_name = implode(",", $res);
+            $campaign->country_ids = implode(",", $ress);
             $campaign->countries = json_encode($cuntry_lists);
-        } else {
+        }else{
             $campaign->countries = $request->countries;
         }
-        // dd($campaign->country_ids);
+        //dd($campaign->country_ids);
         $campaign->advertiser_id = $user->id;
         $campaign->advertiser_code = $request->uid;
         $campaign->campaign_name = $request->campaign_name;
-        $campaign->campaign_id = $this->getCampaignTypePrefix($request->ad_type) . strtoupper(uniqid());
+        $campaign->campaign_id = $aType . strtoupper(uniqid());
         $campaign->campaign_type = $request->campaign_type;
         $campaign->device_type = $request->device_type;
         $campaign->device_os = $request->device_os;
@@ -200,92 +134,90 @@ class AppCampaignControllers extends Controller
         // } else {
         //     $campaign->cpc_amt          = $request->cpc_amt;
         // }
-        // dd($campaign);
-        if ($campaign->save()) {
-            $this->logActivity($request->uid, $campaign->campaign_id, 'Added Campaign', $campaign->campaign_id);
-            $this->sendCampaignEmail($campaign, $request->uid);
-            $this->sendAdminEmail($campaign);
-            return json_encode([
-                'code' => 200,
-                'data' => $campaign,
-                'msg' => 'Campaign created successfully!'
-            ]);
-            // $activitylog = new Activitylog();
-            // $activitylog->uid = $request->uid;
-            // $activitylog->type = 'Add Campaign';
-            // $activitylog->description = '' . $campaign->campaign_id . ' is added Successfully';
-            // $activitylog->status = '1';
-            // $activitylog->save();
-            /* Create Campaign Send Mail */
-            // $email = $user->email;
-            // $fullname = $user->first_name . ' ' . $user->last_name;
-            // $useridas = $campaign->advertiser_code;
-            // $campsid = $campaign->campaign_id;
-            // $campsname = $campaign->campaign_name;
-            // $campadtype = $campaign->ad_type;
-            // /* Send to Admin */
-            // $data['details'] = array(
-            //     'subject' => 'Campaign Created successfully - 7Search PPC ',
-            //     'fullname' => $fullname,
-            //     'usersid' => $useridas,
-            //     'campaignid' => $campsid,
-            //     'campaignname' => $campsname,
-            //     'campaignadtype' => $campadtype
-            // );
-            // $subject = 'Campaign Created successfully - 7Search PPC';
-            // $body = View('emailtemp.campaigncreate', $data);
-            // $sendmailUser = sendmailUser($subject, $body, $email);
-            // if ($sendmailUser == '1'){
-            //     $return['code'] = 200;
-            //     $return['data'] = $campaign;
-            //     $return['msg'] = 'Mail Send & Data Inserted Successfully !';
-            // }else{
-            //     $return['code'] = 200;
-            //     $return['data'] = $campaign;
-            //     $return['msg'] = 'Mail Not Send But Data Insert Successfully !';
-            // }
-            // /* Admin Section  */
-            // $adminmail1 = 'advertisersupport@7searchppc.com';
-            // $adminmail2 = 'info@7searchppc.com';
-            // $bodyadmin = View('emailtemp.campaigncreateadmin', $data);
-            // $subjectadmin = 'Campaign Created successfully - 7Search PPC';
-            // $sendmailadmin = sendmailAdmin($subjectadmin, $bodyadmin, $adminmail1, $adminmail2);
-            // if ($sendmailadmin == '1'){
-            //     $return['code'] = 200;
-            //     $return['data'] = $campaign;
-            //     $return['msg'] = 'Mail Send & Data Inserted Successfully !';
-            // }else{
-            //     $return['code'] = 200;
-            //     $return['data'] = $campaign;
-            //     $return['msg'] = 'Mail Not Send But Data Insert Successfully !';
-            // }
+        //dd($campaign);
+        if ($campaign->save())
+        {
+            $activitylog = new Activitylog();
+            $activitylog->uid = $request->uid;
+            $activitylog->type = 'Add Campaign';
+            $activitylog->description = '' . $campaign->campaign_id . ' is added Successfully';
+            $activitylog->status = '1';
+            $activitylog->save();
+            /* Create Campaign Send Mail   */
+            $email = $user->email;
+            $fullname = $user->first_name . ' ' . $user->last_name;
+            $useridas = $campaign->advertiser_code;
+            $campsid = $campaign->campaign_id;
+            $campsname = $campaign->campaign_name;
+            $campadtype = $campaign->ad_type;
+            /* Send to Admin */
+            $data['details'] = array(
+                'subject' => 'Campaign Created successfully - 7Search PPC ',
+                'fullname' => $fullname,
+                'usersid' => $useridas,
+                'campaignid' => $campsid,
+                'campaignname' => $campsname,
+                'campaignadtype' => $campadtype
+            );
+            $subject = 'Campaign Created successfully - 7Search PPC';
+            $body = View('emailtemp.campaigncreate', $data);
+            /* User Mail Section */
+            // $sendmailUser =  sendmailUser($subject,$body,$email);
+            $sendmailUser = sendmailUser($subject, $body, $email);
+            if ($sendmailUser == '1'){
+                $return['code'] = 200;
+                $return['data'] = $campaign;
+                $return['msg'] = 'Mail Send & Data Inserted Successfully !';
+            }else{
+                $return['code'] = 200;
+                $return['data'] = $campaign;
+                $return['msg'] = 'Mail Not Send But Data Insert Successfully !';
+            }
+            /* Admin Section  */
+            $adminmail1 = 'advertisersupport@7searchppc.com';
+         // $adminmail1 = ['advertisersupport@7searchppc.com', 'testing@7searchppc.com'];
+            $adminmail2 = 'info@7searchppc.com';
+            $bodyadmin = View('emailtemp.campaigncreateadmin', $data);
+            $subjectadmin = 'Campaign Created successfully - 7Search PPC';
+            $sendmailadmin = sendmailAdmin($subjectadmin, $bodyadmin, $adminmail1, $adminmail2);
+            if ($sendmailadmin == '1'){
+                $return['code'] = 200;
+                $return['data'] = $campaign;
+                $return['msg'] = 'Mail Send & Data Inserted Successfully !';
+            }else{
+                $return['code'] = 200;
+                $return['data'] = $campaign;
+                $return['msg'] = 'Mail Not Send But Data Insert Successfully !';
+            }
             /* Campaign Create Send Mail */
-        } else {
+        }else{
             $return['code'] = 101;
             $return['msg'] = 'Something went wrong!';
         }
-        // return json_encode($return);
+        return json_encode($return);
     }
 
     public function updateText(Request $request)
+
     {
+
         $validator = Validator::make(
-            $request->all(), [
-                'campaign_name' => 'required',
-                'device_type' => 'required',
-                'ad_title' => 'required',
-                'ad_description' => 'required',
-                'website_category' => 'required',
-                'pricing_model' => 'required',
-                'daily_budget' => 'required|numeric|min:15',
-                'cpc_amt' => ($request->countries == 'All') ? ['required', 'numeric', 'gte:0.0001'] : ['required', 'numeric', 'gte:0.000001'],
-            ], [
+            $request->all() , [
+                'campaign_name' => 'required', 
+                'device_type' => 'required', 
+                'ad_title' => 'required', 
+                'ad_description' => 'required', 
+                'website_category' => 'required',  
+                'pricing_model' => 'required', 
+                'daily_budget'      => 'required|numeric|min:15',
+                'cpc_amt'           => ($request->countries == 'All') ? ['required','numeric', 'gte:0.0001'] : ['required','numeric', 'gte:0.000001'],
+            ],[
                 'cpc_amt.numeric' => 'The cpc_amt field must be a number.',
                 'cpc_amt.gte' => 'The cpc_amt field must be greater than or equal to 0.0001.',
-            ]
-        );
+            ]);
 
-        if ($validator->fails()) {
+        if ($validator->fails())
+        {
             $return['code'] = 100;
             $return['error'] = $validator->errors();
             $return['msg'] = 'Validation  Error!';
@@ -293,15 +225,15 @@ class AppCampaignControllers extends Controller
         }
 
         $catid = Category::select('cat_name')->where('id', $request->website_category)->where('status', 1)->where('trash', 0)->first();
-        $result = onchangecpcValidation($request->pricing_model, $catid->cat_name, $request->countries);
+        $result = onchangecpcValidation($request->pricing_model,$catid->cat_name,$request->countries);
         $arrResult = json_decode($result);
         $base_amt = $arrResult->base_amt;
-        if ($request->countries == 'All' && $request->cpc_amt < $base_amt) {
-            $return['code'] = 101;
+        if($request->countries == 'All' && $request->cpc_amt < $base_amt){
+            $return['code']    = 101;
             $return['message'] = 'Error! Invalid Bidding Amount.';
             return json_encode($return);
-        } else if ($request->countries != 'All' && $request->cpc_amt < $base_amt) {
-            $return['code'] = 101;
+        }else if($request->countries != 'All' && $request->cpc_amt < $base_amt){
+            $return['code']    = 101;
             $return['message'] = 'Error! Invalid Bidding Amount.';
             return json_encode($return);
         }
@@ -319,34 +251,67 @@ class AppCampaignControllers extends Controller
 
         sort($array2);
 
-        if ($array1 == $array2 && $request->ad_title == $campaign->ad_title && $request->ad_description == $campaign->ad_description && $request->website_category == $campaign->website_category && $request->pricing_model == $campaign->pricing_model && $request->cpc_amt == $campaign->cpc_amt && $campaign->countries == $request->countries) {
+        if ($array1 == $array2 && $request->ad_title == $campaign->ad_title && $request->ad_description == $campaign->ad_description && $request->website_category == $campaign->website_category && $request->pricing_model == $campaign->pricing_model && $request->cpc_amt == $campaign->cpc_amt && $campaign->countries == $request->countries)
+
+        {
             $status = 1;
 
-            if ($request->campaign_name != $campaign->campaign_name || $request->daily_budget != $campaign->daily_budget) {
-                if ($campaign->status == 2) {
+            if ($request->campaign_name != $campaign->campaign_name || $request->daily_budget != $campaign->daily_budget)
+
+            {
+
+                if ($campaign->status == 2)
+
+                {
                     $status = 2;
                     $campaign->status = 2;
+
                 }
-            }
-        } else {
-            $status = 1;
-            if ($campaign->status == 2) {
-                $campaign->status = 1;
+
             }
 
-            if ($campaign->status == 4) {
-                $campaign->status = 1;
-            }
-
-            if ($campaign->status == 5) {
-                $campaign->status = 1;
-            }
         }
 
-        if ($request->countries != 'All') {
+        else
+
+        {
+            $status = 1;
+            if ($campaign->status == 2)
+
+            {
+
+                $campaign->status = 1;
+
+            }
+
+            if ($campaign->status == 4)
+
+            {
+
+                $campaign->status = 1;
+
+            }
+
+            if ($campaign->status == 5)
+
+            {
+
+                $campaign->status = 1;
+
+            }
+
+        }
+
+        if ($request->countries != 'All')
+
+        {
+
             $targetCountries = json_decode($request->countries);
 
-            foreach ($targetCountries as $value) {
+            foreach ($targetCountries as $value)
+
+            {
+
                 $cuntry_list = Country::where('name', $value)->first();
 
                 $res[] = $cuntry_list->name;
@@ -354,15 +319,23 @@ class AppCampaignControllers extends Controller
                 $ress[] = $cuntry_list->id;
 
                 $cuntry_lists[] = Country::select('id as value', 'name as label', 'phonecode as phonecode')->where('name', $value)->first();
+
             }
 
-            $campaign->country_name = implode(',', $res);
+            $campaign->country_name = implode(",", $res);
 
-            $campaign->country_ids = implode(',', $ress);
+            $campaign->country_ids = implode(",", $ress);
 
             $campaign->countries = json_encode($cuntry_lists);
-        } else {
+
+        }
+
+        else
+
+        {
+
             $campaign->countries = $request->countries;
+
         }
 
         $campaign->campaign_name = $request->campaign_name;
@@ -381,8 +354,12 @@ class AppCampaignControllers extends Controller
 
         $campaign->pricing_model = $request->pricing_model;
 
-        if ($request->target_url != '') {
+        if ($request->target_url != '')
+
+        {
+
             $campaign->target_url = $request->target_url;
+
         }
 
         $campaign->conversion_url = $request->conversion_url;
@@ -403,94 +380,140 @@ class AppCampaignControllers extends Controller
 
         // }
 
-        // $campaign->status           = 1;
+        //$campaign->status           = 1;
 
-        if ($campaign->update()) {
-            /* This will update campaign data and status into Redis */
-            updateCamps($cid, $status);
-            updateCamps($cid, $status);
-            $this->logActivity($request->uid, $campaign->campaign_id, 'Update Campaign', $campaign->campaign_id);
-            $this->sendCampaignEmail($campaign, $request->uid, true);
-            $this->sendAdminEmail($campaign, true);
-            return json_encode([
-                'code' => 200,
-                'data' => $campaign,
-                'msg' => 'Campaign Updated Successfully !'
-            ]);
-            // $activitylog = new Activitylog();
-            // $activitylog->uid = $request->uid;
-            // $activitylog->type = 'Edit Campaign';
-            // $activitylog->description = '' . $campaign->campaign_id . ' is edit Successfully';
-            // $activitylog->status = '1';
-            // $activitylog->save();
-            // /* Update Campaign Email Section */
-            // $usersdetils = User::select('first_name', 'last_name')
-            //     ->where('uid', $request->uid)
-            //     ->first();
-            // $fullname = $usersdetils->first_name . ' ' . $usersdetils->last_name;
-            // $userid = $request->uid;
-            // $campname = $campaign->campaign_name;
-            // $campid = $campaign->campaign_id;
-            // $status = $campaign->status;
-            // $subjects = 'Campaign Update Successfully';
-            // $data['details'] = array(
-            //     'fullname' => $fullname,
-            //     'userid' => $userid,
-            //     'campname' => $campname,
-            //     'status' => $status,
-            //     'campid' => $campid
-            // );
-            // /* Admin Section */
-            // $adminmail1 = 'advertisersupport@7searchppc.com';
-            // // $adminmail1 = ['advertisersupport@7searchppc.com', 'testing@7searchppc.com'];
-            // $adminmail2 = 'info@7searchppc.com';
-            // $bodyadmin = View('emailtemp.campaignupdatedmin', $data);
-            // $subjectadmin = 'Campaign Updated Successfully';
-            // $sendmailadmin = sendmailAdmin($subjectadmin, $bodyadmin, $adminmail1, $adminmail2);
-            // if ($sendmailadmin == '1') {
-            //     $return['code'] = 200;
-            //     $return['data'] = $campaign;
-            //     $return['msg'] = 'Mail Send & Campaign Updated Successfully !';
-            // } else {
-            //     $return['code'] = 200;
-            //     $return['data'] = $campaign;
-            //     $return['msg'] = 'Mail Not Send But Data Insert Successfully !';
-            // }
-        } else {
-            /* End Email Section */
+        if ($campaign->update())
+
+        {
+/* This will update campaign data and status into Redis */
+        updateCamps($cid, $status);
+            $activitylog = new Activitylog();
+
+            $activitylog->uid = $request->uid;
+
+            $activitylog->type = 'Edit Campaign';
+
+            $activitylog->description = '' . $campaign->campaign_id . ' is edit Successfully';
+
+            $activitylog->status = '1';
+
+            $activitylog->save();
+
+            /* Update Campaign Email Section */
+
+            $usersdetils = User::select('first_name', 'last_name')->where('uid', $request->uid)
+
+                ->first();
+
+            $fullname = $usersdetils->first_name . ' ' . $usersdetils->last_name;
+
+            $userid = $request->uid;
+
+            $campname = $campaign->campaign_name;
+
+            $campid = $campaign->campaign_id;
+
+            $status = $campaign->status;
+
+            $subjects = 'Campaign Update Successfully';
+
+            $data['details'] = array(
+
+                'fullname' => $fullname,
+
+                'userid' => $userid,
+
+                'campname' => $campname,
+
+                'status' => $status,
+
+                'campid' => $campid
+
+            );
+
+            /* Admin Section  */
+
+            $adminmail1 = 'advertisersupport@7searchppc.com';
+
+         // $adminmail1 = ['advertisersupport@7searchppc.com', 'testing@7searchppc.com'];
+
+            $adminmail2 = 'info@7searchppc.com';
+
+            $bodyadmin = View('emailtemp.campaignupdatedmin', $data);
+
+            $subjectadmin = 'Campaign Updated Successfully';
+
+            $sendmailadmin = sendmailAdmin($subjectadmin, $bodyadmin, $adminmail1, $adminmail2);
+
+            if ($sendmailadmin == '1')
+
+            {
+
+                $return['code'] = 200;
+
+                $return['data'] = $campaign;
+
+                $return['msg'] = 'Mail Send & Campaign Updated Successfully !';
+
+            }
+
+            else
+
+            {
+
+                $return['code'] = 200;
+
+                $return['data'] = $campaign;
+
+                $return['msg'] = 'Mail Not Send But Data Insert Successfully !';
+
+            }
+
+        }
+
+        else
+
+        {
+
+            /* End Email Section  */
 
             $return['code'] = 101;
 
             $return['msg'] = 'No Data Found!';
+
         }
 
         return json_encode($return, JSON_NUMERIC_CHECK);
+
     }
 
     /* PopUnder Campaign Funtions */
 
     public function storePopunder(Request $request)
+
     {
+
         $validator = Validator::make(
-            $request->all(), [
-                'uid' => 'required',
-                'ad_type' => 'required',
+            $request->all() , [
+                'uid' => 'required', 
+                'ad_type' => 'required', 
                 'campaign_name' => 'required',
-                'website_category' => 'required',
-                'device_type' => 'required',
-                'device_os' => 'required',
+                'website_category' => 'required', 
+                'device_type' => 'required', 
+                'device_os' => 'required', 
                 'target_url' => 'required',
                 'countries' => 'required',
-                'daily_budget' => 'required|numeric|min:15',
-                'cpc_amt' => 'required|numeric',
-                // 'cpc_amt'           => ($request->countries == 'All') ? ['required','numeric', 'gte:0.0001'] : ['required','numeric', 'gte:0.000001'],
-            ], [
-                'cpc_amt.numeric' => 'The cpc_amt field must be a number.',
-                // 'cpc_amt.gte' => 'The cpc_amt field must be greater than or equal to 0.0001.',
-            ]
-        );
+                'daily_budget'      => 'required|numeric|min:15',
+                'cpc_amt'           => ($request->countries == 'All') ? ['required','numeric', 'gte:0.0001'] : ['required','numeric', 'gte:0.000001'],
+        ],[
+            'cpc_amt.numeric' => 'The cpc_amt field must be a number.',
+            'cpc_amt.gte' => 'The cpc_amt field must be greater than or equal to 0.0001.',
+          ]);
 
-        if ($validator->fails()) {
+        if ($validator->fails())
+
+        {
+
             $return['code'] = 100;
 
             $return['error'] = $validator->errors();
@@ -498,52 +521,99 @@ class AppCampaignControllers extends Controller
             $return['msg'] = 'Validation Error';
 
             return json_encode($return);
-        }
 
-        // == comment by rajesh ==
-        // $catid = Category::select('cat_name')->where('id', $request->website_category)->where('status', 1)->where('trash', 0)->first();
-        // $result = onchangecpcValidation($request->pricing_model,$catid->cat_name,$request->countries);
-        // $arrResult = json_decode($result);
-        // $base_amt = $arrResult->base_amt;
-        // if($request->countries == 'All' && $request->cpc_amt < $base_amt){
-        //     $return['code']    = 101;
-        //     $return['message'] = 'Error! Invalid Bidding Amount.';
-        //     return json_encode($return);
-        // }else if($request->countries != 'All' && $request->cpc_amt < $base_amt){
-        //     $return['code']    = 101;
-        //     $return['message'] = 'Error! Invalid Bidding Amount.';
-        //     return json_encode($return);
-        // }
+        }
+        
+        $catid = Category::select('cat_name')->where('id', $request->website_category)->where('status', 1)->where('trash', 0)->first();
+        $result = onchangecpcValidation($request->pricing_model,$catid->cat_name,$request->countries);
+        $arrResult = json_decode($result);
+        $base_amt = $arrResult->base_amt;
+        if($request->countries == 'All' && $request->cpc_amt < $base_amt){
+            $return['code']    = 101;
+            $return['message'] = 'Error! Invalid Bidding Amount.';
+            return json_encode($return);
+        }else if($request->countries != 'All' && $request->cpc_amt < $base_amt){
+            $return['code']    = 101;
+            $return['message'] = 'Error! Invalid Bidding Amount.';
+            return json_encode($return);
+        }       
 
         $campaign = new Campaign();
 
         $campaign->ad_type = $request->ad_type;
-        $campaign->campaign_resource = 'app';
-        // if ($request->ad_type == 'text') {
-        //     $aType = 'CMPT';
-        // } elseif ($request->ad_type == 'banner') {
-        //     $aType = 'CMPB';
-        // } elseif ($request->ad_type == 'native') {
-        //     $aType = 'CMPN';
-        // } elseif ($request->ad_type == 'video') {
-        //     $aType = 'CMPV';
-        // } elseif ($request->ad_type == 'popup') {
-        //     $aType = 'CMPP';
-        // } elseif ($request->ad_type == 'social') {
-        //     $aType = 'CMPS';
-        // } else {
-        //     $aType = 'Invalid';
-        // }
 
-        $user = DB::table('users')
-            ->select('id', 'first_name', 'last_name', 'email')
+        if ($request->ad_type == 'text')
+
+        {
+
+            $aType = 'CMPT';
+
+        }
+
+        elseif ($request->ad_type == 'banner')
+
+        {
+
+            $aType = 'CMPB';
+
+        }
+
+        elseif ($request->ad_type == 'native')
+
+        {
+
+            $aType = 'CMPN';
+
+        }
+
+        elseif ($request->ad_type == 'video')
+
+        {
+
+            $aType = 'CMPV';
+
+        }
+
+        elseif ($request->ad_type == 'popup')
+
+        {
+
+            $aType = 'CMPP';
+
+        }
+
+        elseif ($request->ad_type == 'social')
+
+        {
+
+            $aType = 'CMPS';
+
+        }
+
+        else
+
+        {
+
+            $aType = 'Invalid';
+
+        }
+
+        $user = DB::table('users')->select('id', 'first_name', 'last_name', 'email')
+
             ->where('uid', $request->uid)
+
             ->first();
 
-        if ($request->countries != 'All') {
+        if ($request->countries != 'All')
+
+        {
+
             $targetCountries = json_decode($request->countries);
 
-            foreach ($targetCountries as $value) {
+            foreach ($targetCountries as $value)
+
+            {
+
                 $cuntry_list = Country::where('name', $value)->first();
 
                 $res[] = $cuntry_list->name;
@@ -551,15 +621,23 @@ class AppCampaignControllers extends Controller
                 $ress[] = $cuntry_list->id;
 
                 $cuntry_lists[] = Country::select('id as value', 'name as label', 'phonecode as phonecode')->where('name', $value)->first();
+
             }
 
-            $campaign->country_name = implode(',', $res);
+            $campaign->country_name = implode(",", $res);
 
-            $campaign->country_ids = implode(',', $ress);
+            $campaign->country_ids = implode(",", $ress);
 
             $campaign->countries = json_encode($cuntry_lists);
-        } else {
+
+        }
+
+        else
+
+        {
+
             $campaign->countries = $request->countries;
+
         }
 
         $campaign->advertiser_id = $user->id;
@@ -568,7 +646,7 @@ class AppCampaignControllers extends Controller
 
         $campaign->campaign_name = $request->campaign_name;
 
-        $campaign->campaign_id = $this->getCampaignTypePrefix($request->ad_type) . strtoupper(uniqid());
+        $campaign->campaign_id = $aType . strtoupper(uniqid());
 
         $campaign->campaign_type = $request->campaign_type;
 
@@ -584,129 +662,161 @@ class AppCampaignControllers extends Controller
 
         $campaign->pricing_model = 'CPM';
 
-        // $campaign->cpc_amt = $request->cpc_amt;
+        $campaign->cpc_amt = $request->cpc_amt;
 
-        $cat = Category::where('id', $request->website_category)->first();
+        // $cat = Category::where('id', $request->website_category)->first();
 
-        $campaign->cpc_amt = $cat->cpm;
+        // $campaign->cpc_amt          = $cat->cpm;
 
-        if ($campaign->save()) {
-            $this->logActivity($request->uid, $campaign->campaign_id, 'Added Campaign', $campaign->campaign_id);
-            $this->sendCampaignEmail($campaign, $request->uid);
-            $this->sendAdminEmail($campaign);
-            return json_encode([
-                'code' => 200,
-                'data' => $campaign,
-                'msg' => 'Campaign Created successfully!'
-            ]);
-            // $activitylog = new Activitylog();
+        if ($campaign->save())
 
-            // $activitylog->uid = $request->uid;
+        {
 
-            // $activitylog->type = 'Added Campaign';
+            $activitylog = new Activitylog();
 
-            // $activitylog->description = '' . $campaign->campaign_id . ' is Added Successfully';
+            $activitylog->uid = $request->uid;
 
-            // $activitylog->status = '1';
+            $activitylog->type = 'Added Campaign';
 
-            // $activitylog->save();
+            $activitylog->description = '' . $campaign->campaign_id . ' is Added Successfully';
 
-            /* Create Campaign Send Mail */
+            $activitylog->status = '1';
 
-            // $email = $user->email;
+            $activitylog->save();
 
-            // $fullname = $user->first_name . ' ' . $user->last_name;
+            /* Create Campaign Send Mail   */
 
-            // $useridas = $campaign->advertiser_code;
+            $email = $user->email;
 
-            // $campsid = $campaign->campaign_id;
+            $fullname = $user->first_name . ' ' . $user->last_name;
 
-            // $campsname = $campaign->campaign_name;
+            $useridas = $campaign->advertiser_code;
 
-            // $campadtype = $campaign->ad_type;
+            $campsid = $campaign->campaign_id;
+
+            $campsname = $campaign->campaign_name;
+
+            $campadtype = $campaign->ad_type;
 
             /* Send to Admin */
 
-            // $data['details'] = array(
-            //     'subject' => 'Campaign Created successfully - 7Search PPC ',
-            //     'fullname' => $fullname,
-            //     'usersid' => $useridas,
-            //     'campaignid' => $campsid,
-            //     'campaignname' => $campsname,
-            //     'campaignadtype' => $campadtype
-            // );
+            $data['details'] = array(
 
-            // $subject = 'Campaign Created successfully - 7Search PPC';
+                'subject' => 'Campaign Created successfully - 7Search PPC ',
 
-            // $body = View('emailtemp.campaigncreate', $data);
+                'fullname' => $fullname,
+
+                'usersid' => $useridas,
+
+                'campaignid' => $campsid,
+
+                'campaignname' => $campsname,
+
+                'campaignadtype' => $campadtype
+
+            );
+
+            $subject = 'Campaign Created successfully - 7Search PPC';
+
+            $body = View('emailtemp.campaigncreate', $data);
 
             /* User Mail Section */
 
-            // $sendmailUser = sendmailUser($subject, $body, $email);
+            $sendmailUser = sendmailUser($subject, $body, $email);
 
-            // if ($sendmailUser == '1') {
-            //     $return['code'] = 200;
+            if ($sendmailUser == '1')
 
-            //     $return['data'] = $campaign;
+            {
 
-            //     $return['msg'] = 'Mail Send & Data Inserted Successfully !';
-            // } else {
-            //     $return['code'] = 200;
+                $return['code'] = 200;
 
-            //     $return['data'] = $campaign;
+                $return['data'] = $campaign;
 
-            //     $return['msg'] = 'Mail Not Send But Data Insert Successfully !';
-            // }
+                $return['msg'] = 'Mail Send & Data Inserted Successfully !';
 
-            /* Admin Section */
+            }
 
-            // $adminmail1 = 'advertisersupport@7searchppc.com';
+            else
 
-            // $adminmail1 = ['advertisersupport@7searchppc.com', 'testing@7searchppc.com'];
+            {
 
-            // $adminmail2 = 'info@7searchppc.com';
+                $return['code'] = 200;
 
-            // $bodyadmin = View('emailtemp.campaigncreateadmin', $data);
+                $return['data'] = $campaign;
 
-            // $subjectadmin = 'Campaign Created successfully - 7Search PPC';
+                $return['msg'] = 'Mail Not Send But Data Insert Successfully !';
 
-            // $sendmailadmin = sendmailAdmin($subjectadmin, $bodyadmin, $adminmail1, $adminmail2);
+            }
 
-            // if ($sendmailadmin == '1') {
-            //     $return['code'] = 200;
+            /* Admin Section  */
 
-            //     $return['data'] = $campaign;
+            $adminmail1 = 'advertisersupport@7searchppc.com';
 
-            //     $return['msg'] = 'Mail Send & Data Inserted Successfully !';
-            // } else {
-            //     $return['code'] = 200;
+         // $adminmail1 = ['advertisersupport@7searchppc.com', 'testing@7searchppc.com'];
 
-            //     $return['data'] = $campaign;
+            $adminmail2 = 'info@7searchppc.com';
 
-            //     $return['msg'] = 'Mail Not Send But Data Insert Successfully !';
-            // }
+            $bodyadmin = View('emailtemp.campaigncreateadmin', $data);
+
+            $subjectadmin = 'Campaign Created successfully - 7Search PPC';
+
+            $sendmailadmin = sendmailAdmin($subjectadmin, $bodyadmin, $adminmail1, $adminmail2);
+
+            if ($sendmailadmin == '1')
+
+            {
+
+                $return['code'] = 200;
+
+                $return['data'] = $campaign;
+
+                $return['msg'] = 'Mail Send & Data Inserted Successfully !';
+
+            }
+
+            else
+
+            {
+
+                $return['code'] = 200;
+
+                $return['data'] = $campaign;
+
+                $return['msg'] = 'Mail Not Send But Data Insert Successfully !';
+
+            }
 
             /* Campaign Create Send Mail */
-        } else {
+
+        }
+
+        else
+
+        {
+
             $return['code'] = 101;
 
             $return['msg'] = 'Something went wrong!';
+
         }
 
-        // return json_encode($return);
+        return json_encode($return);
     }
 
     public function updatePopUnder(Request $request)
+
     {
-        $validator = Validator::make($request->all(), [
-            'campaign_name' => 'required',
-            'device_type' => 'required',
-            'website_category' => 'required',
-            'daily_budget' => 'required',
-            // 'pricing_model'     => 'required',
+
+        $validator = Validator::make($request->all() , ['campaign_name' => 'required', 'device_type' => 'required', 'website_category' => 'required', 'daily_budget' => 'required',
+
+        //'pricing_model'     => 'required',
+
         ]);
 
-        if ($validator->fails()) {
+        if ($validator->fails())
+
+        {
+
             $return['code'] = 100;
 
             $return['error'] = $validator->errors();
@@ -714,6 +824,7 @@ class AppCampaignControllers extends Controller
             $return['msg'] = 'Validation  Error!';
 
             return json_encode($return);
+
         }
 
         $cid = $request->cid;
@@ -730,33 +841,68 @@ class AppCampaignControllers extends Controller
 
         sort($array2);
 
-        if ($array1 == $array2 && $request->website_category == $campaign->website_category && $request->pricing_model == $campaign->pricing_model && $request->cpc_amt == $campaign->cpc_amt) {
+        if ($array1 == $array2 && $request->website_category == $campaign->website_category && $request->pricing_model == $campaign->pricing_model && $request->cpc_amt == $campaign->cpc_amt)
+
+        {
             $status = 1;
-            if ($request->campaign_name != $campaign->campaign_name || $request->daily_budget != $campaign->daily_budget && $campaign->countries == $request->countries) {
+            if ($request->campaign_name != $campaign->campaign_name || $request->daily_budget != $campaign->daily_budget && $campaign->countries == $request->countries)
+
+            {
                 $status = 2;
-                if ($campaign->status == 2) {
+                if ($campaign->status == 2)
+
+                {
+
                     $campaign->status = 2;
+
                 }
-            }
-        } else {
-            $status = 1;
-            if ($campaign->status == 2) {
-                $campaign->status = 1;
+
+
+
             }
 
-            if ($campaign->status == 4) {
-                $campaign->status = 1;
-            }
-
-            if ($campaign->status == 5) {
-                $campaign->status = 1;
-            }
         }
 
-        if ($request->countries != 'All') {
+        else
+
+        {
+            $status = 1;
+            if ($campaign->status == 2)
+
+            {
+
+                $campaign->status = 1;
+
+            }
+
+            if ($campaign->status == 4)
+
+            {
+
+                $campaign->status = 1;
+
+            }
+
+            if ($campaign->status == 5)
+
+            {
+
+                $campaign->status = 1;
+
+            }
+
+        }
+
+        if ($request->countries != 'All')
+
+        {
+
             $targetCountries = json_decode($request->countries);
 
-            foreach ($targetCountries as $value) {
+            foreach ($targetCountries as $value)
+
+            {
+
                 $cuntry_list = Country::where('name', $value)->first();
 
                 $res[] = $cuntry_list->name;
@@ -764,15 +910,23 @@ class AppCampaignControllers extends Controller
                 $ress[] = $cuntry_list->id;
 
                 $cuntry_lists[] = Country::select('id as value', 'name as label', 'phonecode as phonecode')->where('name', $value)->first();
+
             }
 
-            $campaign->country_name = implode(',', $res);
+            $campaign->country_name = implode(",", $res);
 
-            $campaign->country_ids = implode(',', $ress);
+            $campaign->country_ids = implode(",", $ress);
 
             $campaign->countries = json_encode($cuntry_lists);
-        } else {
+
+        }
+
+        else
+
+        {
+
             $campaign->countries = $request->countries;
+
         }
 
         $campaign->campaign_name = $request->campaign_name;
@@ -785,185 +939,255 @@ class AppCampaignControllers extends Controller
 
         $campaign->daily_budget = $request->daily_budget;
 
-        if ($request->target_url != '') {
+        if ($request->target_url != '')
+
+        {
+
             $campaign->target_url = $request->target_url;
+
         }
 
         $campaign->pricing_model = 'CPM';
 
-        // $campaign->cpc_amt = $request->cpc_amt;
+        $campaign->cpc_amt = $request->cpc_amt;
 
-        $cat = Category::where('id', $request->website_category)->first();
+        // $cat = Category::where('id', $request->website_category)->first();
 
-        $campaign->cpc_amt = $cat->cpm;
+        // $campaign->cpc_amt          = $cat->cpm;
 
-        // $campaign->status           = 1;
+        //$campaign->status           = 1;
 
-        if ($campaign->update()) {
-            /* This will update campaign data and status into Redis */
-            updateCamps($cid, $status);
-            $this->logActivity($request->uid, $campaign->campaign_id, 'Update Campaign', $campaign->campaign_id);
-            $this->sendCampaignEmail($campaign, $request->uid, true);
-            $this->sendAdminEmail($campaign, true);
-            return json_encode([
-                'code' => 200,
-                'data' => $campaign,
-                'msg' => 'Campaign updated successfully!'
-            ]);
-            // $activitylog = new Activitylog();
+        if ($campaign->update())
 
-            // $activitylog->uid = $request->uid;
+        {
+/* This will update campaign data and status into Redis */
+        updateCamps($cid, $status);
+            $activitylog = new Activitylog();
 
-            // $activitylog->type = 'Edit Campaign';
+            $activitylog->uid = $request->uid;
 
-            // $activitylog->description = '' . $campaign->campaign_id . ' is edit Successfully';
+            $activitylog->type = 'Edit Campaign';
 
-            // $activitylog->status = '1';
+            $activitylog->description = '' . $campaign->campaign_id . ' is edit Successfully';
 
-            // $activitylog->save();
+            $activitylog->status = '1';
+
+            $activitylog->save();
 
             /* Update Campaign Email Section */
 
-            // $usersdetils = User::select('first_name', 'last_name')
-            //     ->where('uid', $request->uid)
-            //     ->first();
+            $usersdetils = User::select('first_name', 'last_name')->where('uid', $request->uid)
 
-            // $fullname = $usersdetils->first_name . ' ' . $usersdetils->last_name;
+                ->first();
 
-            // $userid = $request->uid;
+            $fullname = $usersdetils->first_name . ' ' . $usersdetils->last_name;
 
-            // $campname = $campaign->campaign_name;
+            $userid = $request->uid;
 
-            // $campid = $campaign->campaign_id;
+            $campname = $campaign->campaign_name;
 
-            // $status = $campaign->status;
+            $campid = $campaign->campaign_id;
 
-            // $subjects = 'Campaign Update Successfully';
+            $status = $campaign->status;
 
-            // $data['details'] = array(
-            //     'fullname' => $fullname,
-            //     'userid' => $userid,
-            //     'campname' => $campname,
-            //     'status' => $status,
-            //     'campid' => $campid
-            // );
+            $subjects = 'Campaign Update Successfully';
 
-            /* Admin Section */
+            $data['details'] = array(
 
-            // $adminmail1 = 'advertisersupport@7searchppc.com';
+                'fullname' => $fullname,
 
-            // $adminmail1 = ['advertisersupport@7searchppc.com', 'testing@7searchppc.com'];
+                'userid' => $userid,
 
-            // $adminmail2 = 'info@7searchppc.com';
+                'campname' => $campname,
 
-            // $bodyadmin = View('emailtemp.campaignupdatedmin', $data);
+                'status' => $status,
 
-            // $subjectadmin = 'Campaign Updated Successfully';
+                'campid' => $campid
 
-            // $sendmailadmin = sendmailAdmin($subjectadmin, $bodyadmin, $adminmail1, $adminmail2);
+            );
 
-            // if ($sendmailadmin == '1') {
-            //     $return['code'] = 200;
+            /* Admin Section  */
 
-            //     $return['data'] = $campaign;
+            $adminmail1 = 'advertisersupport@7searchppc.com';
 
-            //     $return['msg'] = 'Mail Send & Campaign Updated Successfully !';
-            // } else {
-            //     $return['code'] = 200;
+         // $adminmail1 = ['advertisersupport@7searchppc.com', 'testing@7searchppc.com'];
 
-            //     $return['data'] = $campaign;
+            $adminmail2 = 'info@7searchppc.com';
 
-            //     $return['msg'] = 'Mail Not Send But Data Insert Successfully !';
-            // }
+            $bodyadmin = View('emailtemp.campaignupdatedmin', $data);
 
-            // /* End Email Section */
+            $subjectadmin = 'Campaign Updated Successfully';
 
-            // $return['code'] = 200;
+            $sendmailadmin = sendmailAdmin($subjectadmin, $bodyadmin, $adminmail1, $adminmail2);
 
-            // $return['data'] = $campaign;
+            if ($sendmailadmin == '1')
 
-            // $return['msg'] = 'Campaign updated successfully!';
-        } else {
+            {
+
+                $return['code'] = 200;
+
+                $return['data'] = $campaign;
+
+                $return['msg'] = 'Mail Send & Campaign Updated Successfully !';
+
+            }
+
+            else
+
+            {
+
+                $return['code'] = 200;
+
+                $return['data'] = $campaign;
+
+                $return['msg'] = 'Mail Not Send But Data Insert Successfully !';
+
+            }
+
+            /* End Email Section  */
+
+            $return['code'] = 200;
+
+            $return['data'] = $campaign;
+
+            $return['msg'] = 'Campaign updated successfully!';
+
+        }
+
+        else
+
+        {
+
             $return['code'] = 101;
 
             $return['msg'] = 'Something went wrong!';
+
         }
 
-        // return json_encode($return);
+        return json_encode($return);
+
     }
 
     /* ----------------------------- Banner Campaign Funtions ---------------------------------- */
 
     public function storeBanner(Request $request)
+
     {
+
         $validator = Validator::make(
-            $request->all(), [
-                'uid' => 'required',
-                'ad_type' => 'required',
+            $request->all() , [
+                'uid' => 'required', 
+                'ad_type' => 'required', 
                 'campaign_name' => 'required',
-                'website_category' => 'required',
-                'device_type' => 'required',
+                'website_category' => 'required', 
+                'device_type' => 'required', 
                 'device_os' => 'required',
-                'target_url' => 'required',
-                'countries' => 'required',
-                'pricing_model' => 'required',
-                'daily_budget' => 'required|numeric|min:15',
-                'cpc_amt' => ($request->countries == 'All') ? ['required', 'numeric', 'gte:0.0001'] : ['required', 'numeric', 'gte:0.000001'],
-            ], [
+                'target_url' => 'required', 
+                'countries' => 'required', 
+                'pricing_model' => 'required', 
+                'daily_budget'      => 'required|numeric|min:15',
+                'cpc_amt'           => ($request->countries == 'All') ? ['required','numeric', 'gte:0.0001'] : ['required','numeric', 'gte:0.000001'],
+            ],[
                 'cpc_amt.numeric' => 'The cpc_amt field must be a number.',
                 'cpc_amt.gte' => 'The cpc_amt field must be greater than or equal to 0.0001.',
-            ]
-        );
-        if ($validator->fails()) {
+            ]);
+        if ($validator->fails()){
             $return['code'] = 100;
             $return['error'] = $validator->errors();
             $return['msg'] = 'Validation Error';
             return json_encode($return);
         }
         $catid = Category::select('cat_name')->where('id', $request->website_category)->where('status', 1)->where('trash', 0)->first();
-        $result = onchangecpcValidation($request->pricing_model, $catid->cat_name, $request->countries);
+        $result = onchangecpcValidation($request->pricing_model,$catid->cat_name,$request->countries);
         $arrResult = json_decode($result);
         $base_amt = $arrResult->base_amt;
-        if ($request->countries == 'All' && $request->cpc_amt < $base_amt) {
-            $return['code'] = 101;
+        if($request->countries == 'All' && $request->cpc_amt < $base_amt){
+            $return['code']    = 101;
             $return['message'] = 'Error! Invalid Bidding Amount.';
             return json_encode($return);
-        } else if ($request->countries != 'All' && $request->cpc_amt < $base_amt) {
-            $return['code'] = 101;
+        }else if($request->countries != 'All' && $request->cpc_amt < $base_amt){
+            $return['code']    = 101;
             $return['message'] = 'Error! Invalid Bidding Amount.';
             return json_encode($return);
         }
         $campaign = new Campaign();
 
         $campaign->ad_type = $request->ad_type;
-        $campaign->campaign_resource = 'app';
-        // if ($request->ad_type == 'text') {
-        //     $aType = 'CMPT';
-        // } elseif ($request->ad_type == 'banner') {
-        //     $aType = 'CMPB';
-        // } elseif ($request->ad_type == 'native') {
-        //     $aType = 'CMPN';
-        // } elseif ($request->ad_type == 'video') {
-        //     $aType = 'CMPV';
-        // } elseif ($request->ad_type == 'popup') {
-        //     $aType = 'CMPP';
-        // } elseif ($request->ad_type == 'social') {
-        //     $aType = 'CMPS';
-        // } else {
-        //     $aType = 'Invalid';
-        // }
 
-        $user = DB::table('users')
-            ->select('id', 'first_name', 'last_name', 'email')
+        if ($request->ad_type == 'text')
+
+        {
+
+            $aType = 'CMPT';
+
+        }
+
+        elseif ($request->ad_type == 'banner')
+
+        {
+
+            $aType = 'CMPB';
+
+        }
+
+        elseif ($request->ad_type == 'native')
+
+        {
+
+            $aType = 'CMPN';
+
+        }
+
+        elseif ($request->ad_type == 'video')
+
+        {
+
+            $aType = 'CMPV';
+
+        }
+
+        elseif ($request->ad_type == 'popup')
+
+        {
+
+            $aType = 'CMPP';
+
+        }
+
+        elseif ($request->ad_type == 'social')
+
+        {
+
+            $aType = 'CMPS';
+
+        }
+
+        else
+
+        {
+
+            $aType = 'Invalid';
+
+        }
+
+        $user = DB::table('users')->select('id', 'first_name', 'last_name', 'email')
+
             ->where('uid', $request->uid)
+
             ->first();
 
         $campaign->countries = $request->countries;
 
-        if ($request->countries != 'All') {
+        if ($request->countries != 'All')
+
+        {   
+
             $targetCountries = json_decode($request->countries);
 
-            foreach ($targetCountries as $value) {
+            foreach ($targetCountries as $value)
+
+            {
+
                 $cuntry_list = Country::where('name', $value)->first();
 
                 $res[] = $cuntry_list->name;
@@ -971,15 +1195,23 @@ class AppCampaignControllers extends Controller
                 $ress[] = $cuntry_list->id;
 
                 $cuntry_lists[] = Country::select('id as value', 'name as label', 'phonecode as phonecode')->where('name', $value)->first();
+
             }
 
-            $campaign->country_name = implode(',', $res);
+            $campaign->country_name = implode(",", $res);
 
-            $campaign->country_ids = implode(',', $ress);
+            $campaign->country_ids = implode(",", $ress);
 
             $campaign->countries = json_encode($cuntry_lists);
-        } else {
+
+        }
+
+        else
+
+        {
+
             $campaign->countries = $request->countries;
+
         }
 
         $campaign->advertiser_id = $user->id;
@@ -988,7 +1220,7 @@ class AppCampaignControllers extends Controller
 
         $campaign->campaign_name = $request->campaign_name;
 
-        $campaign->campaign_id = $this->getCampaignTypePrefix($request->ad_type) . strtoupper(uniqid());
+        $campaign->campaign_id = $aType . strtoupper(uniqid());
 
         $campaign->campaign_type = $request->campaign_type;
 
@@ -1028,142 +1260,180 @@ class AppCampaignControllers extends Controller
 
         $images = $request->images;
 
-        if ($campaign->save()) {
+        if ($campaign->save())
 
+        {
 
-            // $activitylog = new Activitylog();
+            $activitylog = new Activitylog();
 
-            // $activitylog->uid = $request->uid;
+            $activitylog->uid = $request->uid;
 
-            // $activitylog->type = 'Added Campaign';
+            $activitylog->type = 'Added Campaign';
 
-            // $activitylog->description = '' . $campaign->campaign_id . ' is added Successfully';
+            $activitylog->description = '' . $campaign->campaign_id . ' is added Successfully';
 
-            // $activitylog->status = '1';
+            $activitylog->status = '1';
 
-            // $activitylog->save();
-            $this->logActivity($request->uid, $campaign->campaign_id, 'Add Campaign', $campaign->campaign_id);
-            if ($images) {
-                foreach ($images as $image) {
-                    $imageName = basename($image['img']);
-                    $response = storeCDNImage($imageName);
-                    $arr = ['campaign_id' => $campaign->campaign_id, 'advertiser_code' => $campaign->advertiser_code, 'image_type' => $image['type'], 'image_path' => $image['img'], 'cdn_path' => $response['image-path'], 'cdnimg_id' => $response['image-id']];
+            $activitylog->save();
+
+            if ($images)
+
+            {
+
+                foreach ($images as $image)
+
+                {
+
+                    $arr = ['campaign_id' => $campaign->campaign_id, 'advertiser_code' => $campaign->advertiser_code, 'image_type' => $image['type'], 'image_path' => basename($image['img'])];
+
+                    // dd($arr);
 
                     AdBannerImage::insert($arr);
+
                 }
+
             }
 
-            $this->sendCampaignEmail($campaign, $request->uid);
-            $this->sendAdminEmail($campaign);
-            return json_encode([
-                'code' => 200,
-                'data' => $campaign,
-                'msg' => 'Operation completed successfully!'
-            ]);
+            /* Create Campaign Send Mail   */
 
-            // /* Create Campaign Send Mail */
+            $email = $user->email;
 
-            // $email = $user->email;
+            $fullname = $user->first_name . ' ' . $user->last_name;
 
-            // $fullname = $user->first_name . ' ' . $user->last_name;
+            $useridas = $campaign->advertiser_code;
 
-            // $useridas = $campaign->advertiser_code;
+            $campsid = $campaign->campaign_id;
 
-            // $campsid = $campaign->campaign_id;
+            $campsname = $campaign->campaign_name;
 
-            // $campsname = $campaign->campaign_name;
+            $campadtype = $campaign->ad_type;
 
-            // $campadtype = $campaign->ad_type;
+            /* Send to Admin */
 
-            // /* Send to Admin */
+            $data['details'] = array(
 
-            // $data['details'] = array(
-            //     'subject' => 'Campaign Created successfully - 7Search PPC ',
-            //     'fullname' => $fullname,
-            //     'usersid' => $useridas,
-            //     'campaignid' => $campsid,
-            //     'campaignname' => $campsname,
-            //     'campaignadtype' => $campadtype
-            // );
+                'subject' => 'Campaign Created successfully - 7Search PPC ',
 
-            // $subject = 'Campaign Created successfully - 7Search PPC';
+                'fullname' => $fullname,
 
-            // $body = View('emailtemp.campaigncreate', $data);
+                'usersid' => $useridas,
 
-            // /* User Mail Section */
+                'campaignid' => $campsid,
 
-            // $sendmailUser = sendmailUser($subject, $body, $email);
+                'campaignname' => $campsname,
 
-            // if ($sendmailUser == '1') {
-            //     $return['code'] = 200;
+                'campaignadtype' => $campadtype
 
-            //     $return['data'] = $campaign;
+            );
 
-            //     $return['msg'] = 'Mail Send & Data Inserted Successfully !';
-            // } else {
-            //     $return['code'] = 200;
+            $subject = 'Campaign Created successfully - 7Search PPC';
 
-            //     $return['data'] = $campaign;
+            $body = View('emailtemp.campaigncreate', $data);
 
-            //     $return['msg'] = 'Mail Not Send But Data Insert Successfully !';
-            // }
+            /* User Mail Section */
 
-            // /* Admin Section */
+            $sendmailUser = sendmailUser($subject, $body, $email);
 
-            // $adminmail1 = 'advertisersupport@7searchppc.com';
+            if ($sendmailUser == '1')
 
-            // // $adminmail1 = ['advertisersupport@7searchppc.com', 'testing@7searchppc.com'];
+            {
 
-            // $adminmail2 = 'info@7searchppc.com';
+                $return['code'] = 200;
 
-            // $bodyadmin = View('emailtemp.campaigncreateadmin', $data);
+                $return['data'] = $campaign;
 
-            // $subjectadmin = 'Campaign Created successfully - 7Search PPC';
+                $return['msg'] = 'Mail Send & Data Inserted Successfully !';
 
-            // $sendmailadmin = sendmailAdmin($subjectadmin, $bodyadmin, $adminmail1, $adminmail2);
+            }
 
-            // if ($sendmailadmin == '1') {
-            //     $return['code'] = 200;
+            else
 
-            //     $return['data'] = $campaign;
+            {
 
-            //     $return['msg'] = 'Mail Send & Data Inserted Successfully !';
-            // } else {
-            //     $return['code'] = 200;
+                $return['code'] = 200;
 
-            //     $return['data'] = $campaign;
+                $return['data'] = $campaign;
 
-            //     $return['msg'] = 'Mail Not Send But Data Insert Successfully !';
-            // }
+                $return['msg'] = 'Mail Not Send But Data Insert Successfully !';
+
+            }
+
+            /* Admin Section  */
+
+            $adminmail1 = 'advertisersupport@7searchppc.com';
+
+         // $adminmail1 = ['advertisersupport@7searchppc.com', 'testing@7searchppc.com'];
+
+            $adminmail2 = 'info@7searchppc.com';
+
+            $bodyadmin = View('emailtemp.campaigncreateadmin', $data);
+
+            $subjectadmin = 'Campaign Created successfully - 7Search PPC';
+
+            $sendmailadmin = sendmailAdmin($subjectadmin, $bodyadmin, $adminmail1, $adminmail2);
+
+            if ($sendmailadmin == '1')
+
+            {
+
+                $return['code'] = 200;
+
+                $return['data'] = $campaign;
+
+                $return['msg'] = 'Mail Send & Data Inserted Successfully !';
+
+            }
+
+            else
+
+            {
+
+                $return['code'] = 200;
+
+                $return['data'] = $campaign;
+
+                $return['msg'] = 'Mail Not Send But Data Insert Successfully !';
+
+            }
 
             /* Campaign Create Send Mail */
-        } else {
+
+        }
+
+        else
+
+        {
+
             $return['code'] = 101;
 
             $return['msg'] = 'Something went wrong!';
+
         }
 
-        // return json_encode($return);
+        return json_encode($return);
+
     }
+
+
 
     public function updateBanner(Request $request)
     {
         $validator = Validator::make(
-            $request->all(), [
-                'campaign_name' => 'required',
-                'website_category' => 'required',
-                'device_type' => 'required',
-                'device_os' => 'required',
-                'countries' => 'required',
-                'pricing_model' => 'required',
-                'daily_budget' => 'required|numeric|min:15',
-                'cpc_amt' => ($request->countries == 'All') ? ['required', 'numeric', 'gte:0.0001'] : ['required', 'numeric', 'gte:0.000001'],
-            ], [
+            $request->all() , [
+                'campaign_name' => 'required', 
+                'website_category' => 'required', 
+                'device_type' => 'required', 
+                'device_os' => 'required', 
+                'countries' => 'required', 
+                'pricing_model' => 'required', 
+                'daily_budget'      => 'required|numeric|min:15',
+                'cpc_amt'           => ($request->countries == 'All') ? ['required','numeric', 'gte:0.0001'] : ['required','numeric', 'gte:0.000001'],
+            ],[
                 'cpc_amt.numeric' => 'The cpc_amt field must be a number.',
                 'cpc_amt.gte' => 'The cpc_amt field must be greater than or equal to 0.0001.',
-            ]
-        );
-        if ($validator->fails()) {
+            ]);
+        if ($validator->fails())
+        {
             $return['code'] = 100;
             $return['error'] = $validator->errors();
             $return['msg'] = 'Validation Error';
@@ -1171,62 +1441,71 @@ class AppCampaignControllers extends Controller
         }
 
         $catid = Category::select('cat_name')->where('id', $request->website_category)->where('status', 1)->where('trash', 0)->first();
-        $result = onchangecpcValidation($request->pricing_model, $catid->cat_name, $request->countries);
+        $result = onchangecpcValidation($request->pricing_model,$catid->cat_name,$request->countries);
         $arrResult = json_decode($result);
         $base_amt = $arrResult->base_amt;
-        if ($request->countries == 'All' && $request->cpc_amt < $base_amt) {
-            $return['code'] = 101;
+        if($request->countries == 'All' && $request->cpc_amt < $base_amt){
+            $return['code']    = 101;
             $return['message'] = 'Error! Invalid Bidding Amount.';
             return json_encode($return);
-        } else if ($request->countries != 'All' && $request->cpc_amt < $base_amt) {
-            $return['code'] = 101;
+        }else if($request->countries != 'All' && $request->cpc_amt < $base_amt){
+            $return['code']    = 101;
             $return['message'] = 'Error! Invalid Bidding Amount.';
             return json_encode($return);
         }
 
         $cid = $request->cid;
         $campaign = Campaign::where('campaign_id', $cid)->first();
-        $bannerImages = AdBannerImage::where('campaign_id', $cid)->get();
         $array1 = explode(',', $request->device_type);
         $array2 = explode(',', $campaign->device_type);
         // Sort the arrays
         sort($array1);
         sort($array2);
-        if ($array1 == $array2 && $request->ad_title == $campaign->ad_title && $request->ad_description == $campaign->ad_description && $request->website_category == $campaign->website_category && $request->pricing_model == $campaign->pricing_model && $request->cpc_amt == $campaign->cpc_amt && $campaign->countries == $request->countries) {
+        if ($array1 == $array2 && $request->ad_title == $campaign->ad_title && $request->ad_description == $campaign->ad_description && $request->website_category == $campaign->website_category && $request->pricing_model == $campaign->pricing_model && $request->cpc_amt == $campaign->cpc_amt && $campaign->countries == $request->countries)
+        {
             $status = 1;
-            $imgStatus = 1;
-            if ($request->campaign_name != $campaign->campaign_name || $request->daily_budget != $campaign->daily_budget) {
-                if ($campaign->status == 2) {
+            if ($request->campaign_name != $campaign->campaign_name || $request->daily_budget != $campaign->daily_budget)
+            {
+                if ($campaign->status == 2)
+                {
                     $status = 2;
-                    $imgStatus = 2;
                     $campaign->status = 2;
                 }
             }
-        } else {
+        }
+        else
+        {
             $status = 1;
-            $imgStatus = 2;
-            if ($campaign->status == 2) {
+            if ($campaign->status == 2)
+            {
                 $campaign->status = 1;
             }
-            if ($campaign->status == 4) {
+            if ($campaign->status == 4)
+            {
                 $campaign->status = 1;
             }
-            if ($campaign->status == 5) {
+            if ($campaign->status == 5)
+            {
                 $campaign->status = 1;
             }
         }
-        if ($request->countries != 'All') {
+        if ($request->countries != 'All')
+        {
             $targetCountries = json_decode($request->countries);
-            foreach ($targetCountries as $value) {
+            foreach ($targetCountries as $value)
+            {
                 $cuntry_list = Country::where('name', $value)->first();
                 $res[] = $cuntry_list->name;
                 $ress[] = $cuntry_list->id;
                 $cuntry_lists[] = Country::select('id as value', 'name as label', 'phonecode as phonecode')->where('name', $value)->first();
             }
-            $campaign->country_name = implode(',', $res);
-            $campaign->country_ids = implode(',', $ress);
+            $campaign->country_name = implode(",", $res);
+            $campaign->country_ids = implode(",", $ress);
             $campaign->countries = json_encode($cuntry_lists);
-        } else {
+        }
+
+        else
+        {
             $campaign->countries = $request->countries;
         }
         $campaign->campaign_name = $request->campaign_name;
@@ -1234,7 +1513,8 @@ class AppCampaignControllers extends Controller
         $campaign->device_os = $request->device_os;
         $campaign->ad_title = $request->ad_title;
         $campaign->ad_description = $request->ad_description;
-        if ($request->target_url != '') {
+        if ($request->target_url != '')
+        {
             $campaign->target_url = $request->target_url;
         }
         $campaign->conversion_url = $request->conversion_url;
@@ -1250,67 +1530,23 @@ class AppCampaignControllers extends Controller
         // } else {
         //     $campaign->cpc_amt          = $request->cpc_amt;
         // }
-        // $campaign->status           = 1;
+        //$campaign->status           = 1;
         $images = $request->images;
-        if ($campaign->update()) {
-            /* This will update campaign data and status into Redis */
-            updateCamps($cid, $status);
-            // $activitylog = new Activitylog();
-            // $activitylog->uid = $request->uid;
-            // $activitylog->type = 'Edit Campaign';
-            // $activitylog->description = '' . $campaign->campaign_id . ' is edit Successfully';
-            // $activitylog->status = '1';
-            // $activitylog->save();
-            $this->logActivity($request->uid, $campaign->campaign_id, 'Update Campaign', $campaign->campaign_id);
-            if ($images) {
-                $previousImages = [];
-                $updatedImages = [];
-                $arr = [];
-                if ($status == 1) {
-                    if ($imgStatus == 2) {
-                        $status = 2;
-                    } else {
-                        $status = 1;
-                    }
-                } else {
-                    $status = 2;
-                }
-                foreach ($bannerImages as $bannerImage) {
-                    $previousImages[] = $bannerImage->image_type;
-                    $arr[] = $bannerImage->image_type;
-                }
-                if (!empty($request->images)) {
-                    foreach ($request->images as $image) {
-                        $image['type'];
-                        if (!in_array($image['type'], $arr)) {
-                            $arr2[] = $image['type'];
-                        } else {
-                            $arr1[] = $image['type'];
-                        }
-                        (!empty($arr1) && $updatedImages['update'] = $arr1);
-                        (!empty($arr2) && $updatedImages['added'] = $arr2);
-                    }
-                }
-                if (!empty($request->del_images)) {
-                    foreach ($request->del_images as $del_image) {
-                        $updatedImages['delete'][] = $del_image;
-                        $previousImages[] = $del_image;
-                    }
-                }
-                $campLogData['images']['previous'] = array_unique($previousImages);
-                $campLogData['images']['updated'] = $updatedImages;
-                $campLogData['message'] = 'User has updated the campaign!';
-                if (!empty($request->images)) {
-                    $campaignLogs = new CampaignLogs();
-                    $campaignLogs->uid = $request->uid;
-                    $campaignLogs->campaign_type = $campaign->ad_type;
-                    $campaignLogs->campaign_id = $campaign->campaign_id;
-                    $campaignLogs->campaign_data = json_encode($campLogData);
-                    $campaignLogs->action = 2;
-                    $campaignLogs->user_type = 1;
-                    $campaignLogs->save();
-                }
-                foreach ($images as $image) {
+        if ($campaign->update())
+        {
+/* This will update campaign data and status into Redis */
+        updateCamps($cid, $status);
+            $activitylog = new Activitylog();
+            $activitylog->uid = $request->uid;
+            $activitylog->type = 'Edit Campaign';
+            $activitylog->description = '' . $campaign->campaign_id . ' is edit Successfully';
+            $activitylog->status = '1';
+            $activitylog->save();
+            if ($images)
+            {
+                foreach ($images as $image)
+                {
+
                     // $filePath = 'banner-image/' . $image;
 
                     // if (Storage::disk('public')->exists($filePath)) {
@@ -1329,122 +1565,117 @@ class AppCampaignControllers extends Controller
 
                     // ])->update(['image_path' => $image['img']]);
 
-                    $getexistImage = AdBannerImage::select('image_path as name', 'cdnimg_id')->where('campaign_id', $cid)->where('advertiser_code', $request->uid)->where('image_type', $image['type'])->first();
-                    // if(!empty($getexistImage)){
-                    //       $existimg = env('STOREAD_IMAGE_URL').$getexistImage->name; // name is image name.
-                    //     if($getexistImage){
-                    //      delstoreImages($folderName=env('CDN_FOLDER'),$fileName=$getexistImage->name);
-                    //     }
-                    // }
-                    $imageName = basename($image['img']);
-                    $response = storeCDNImage($imageName);
-                    $img = AdBannerImage::where([
-                        ['campaign_id', '=', $campaign->campaign_id],
-                        ['advertiser_code', '=', $campaign->advertiser_code],
-                        ['image_type', '=', $image['type']],
-                    ])->first();
-                    if ($img == null) {
-                        AdBannerImage::create(['campaign_id' => $campaign->campaign_id, 'advertiser_code' => $campaign->advertiser_code, 'image_type' => $image['type'], 'image_path' => $image['img'], 'cdn_path' => $response['image-path'], 'cdnimg_id' => $response['image-id']]);
-                    } else {
-                        $img->image_path = $image['img'];
-                        $img->cdn_path = $response['image-path'];
-                        $img->cdnimg_id = $response['image-id'];
+                    $getexistImage = AdBannerImage::select('image_path as name')->where('campaign_id',$cid)->where('advertiser_code',$request->uid)->where('image_type',$image['type'])->first();
+                    if(!empty($getexistImage)){
+                         $existimg = env('STOREAD_IMAGE_URL').$getexistImage->name; // name is image name.
+                        if($getexistImage && $existimg){
+                            delstoreImages($folderName=env('CDN_FOLDER'),$fileName=$getexistImage->name);
+                        }
+                    }
+
+                    $img = AdBannerImage::where([['campaign_id', '=', $campaign->campaign_id], ['advertiser_code', '=', $campaign->advertiser_code], ['image_type', '=', $image['type']], ])->first();
+                    if ($img == null)
+                    {
+                        AdBannerImage::create(['campaign_id' => $campaign->campaign_id, 'advertiser_code' => $campaign->advertiser_code, 'image_type' => $image['type'], 'image_path' => basename($image['img'])]);
+
+                    }
+                    else
+                    {
+                        $img->image_path = basename($image['img']);
                         $img->save();
                     }
-                    DB::table('campaigns')->where('advertiser_code', $campaign->advertiser_code)->where('campaign_id', $campaign->campaign_id)->update(['status' => 1]);
                 }
             }
 
-            $this->sendCampaignEmail($campaign, $request->uid, true);
-            $this->sendAdminEmail($campaign, true);
-            return json_encode([
-                'code' => 200,
-                'data' => $campaign,
-                'msg' => 'Campaign updated successfully!'
-            ]);
+            /* Update Campaign Email Section */
+            $usersdetils = User::select('first_name', 'last_name')->where('uid', $request->uid)
+                ->first();
+            $fullname = $usersdetils->first_name . ' ' . $usersdetils->last_name;
+            $userid = $request->uid;
+            $campname = $campaign->campaign_name;
+            $campid = $campaign->campaign_id;
+            $status = $campaign->status;
+            $subjects = 'Campaign Update Successfully';
+            $data['details'] = array(
+                'fullname' => $fullname,
+                'userid' => $userid,
+                'campname' => $campname,
+                'status' => $status,
+                'campid' => $campid
 
-            // /* Update Campaign Email Section */
-            // $usersdetils = User::select('first_name', 'last_name')
-            //     ->where('uid', $request->uid)
-            //     ->first();
-            // $fullname = $usersdetils->first_name . ' ' . $usersdetils->last_name;
-            // $userid = $request->uid;
-            // $campname = $campaign->campaign_name;
-            // $campid = $campaign->campaign_id;
-            // $status = $campaign->status;
-            // $subjects = 'Campaign Update Successfully';
-            // $data['details'] = array(
-            //     'fullname' => $fullname,
-            //     'userid' => $userid,
-            //     'campname' => $campname,
-            //     'status' => $status,
-            //     'campid' => $campid
-            // );
+            );
 
-            // /* Admin Section */
-            // $adminmail1 = 'advertisersupport@7searchppc.com';
-            // // $adminmail1 = ['advertisersupport@7searchppc.com', 'testing@7searchppc.com'];
-            // $adminmail2 = 'info@7searchppc.com';
-            // $bodyadmin = View('emailtemp.campaignupdatedmin', $data);
-            // $subjectadmin = 'Campaign Updated Successfully';
-            // $sendmailadmin = sendmailAdmin($subjectadmin, $bodyadmin, $adminmail1, $adminmail2);
-            // if ($sendmailadmin == '1') {
-            //     $return['code'] = 200;
-            //     $return['data'] = $campaign;
-            //     $return['msg'] = 'Mail Send & Campaign Updated Successfully !';
-            // } else {
-            //     $return['code'] = 200;
-            //     $return['data'] = $campaign;
-            //     $return['msg'] = 'Mail Not Send But Data Insert Successfully !';
-            // }
-            /* End Email Section */
-        } else {
+            /* Admin Section  */
+            $adminmail1 = 'advertisersupport@7searchppc.com';
+         // $adminmail1 = ['advertisersupport@7searchppc.com', 'testing@7searchppc.com'];
+            $adminmail2 = 'info@7searchppc.com';
+            $bodyadmin = View('emailtemp.campaignupdatedmin', $data);
+            $subjectadmin = 'Campaign Updated Successfully';
+            $sendmailadmin = sendmailAdmin($subjectadmin, $bodyadmin, $adminmail1, $adminmail2);
+            if ($sendmailadmin == '1')
+            {
+                $return['code'] = 200;
+                $return['data'] = $campaign;
+                $return['msg'] = 'Mail Send & Campaign Updated Successfully !';
+            }
+            else
+            {
+                $return['code'] = 200;
+                $return['data'] = $campaign;
+                $return['msg'] = 'Mail Not Send But Data Insert Successfully !';
+            }
+            /* End Email Section  */
+        }
+        else
+        {
             $return['code'] = 101;
             $return['msg'] = 'Something went wrong!';
         }
-        // return json_encode($return);
+        return json_encode($return);
     }
 
     /* --------------------------------- Social Campaign Funtions -------------------------------- */
 
     public function storeSocial(Request $request)
-    {
-        $validator = Validator::make(
-            $request->all(), [
-                'uid' => 'required',
-                'ad_type' => 'required',
-                'social_ad_type' => 'required',
-                'ad_title' => 'required',
-                'ad_description' => 'required',
-                'campaign_name' => 'required',
-                'website_category' => 'required',
-                'device_type' => 'required',
-                'device_os' => 'required',
-                'target_url' => 'required',
-                'countries' => 'required',
-                'pricing_model' => 'required',
-                'daily_budget' => 'required|numeric|min:15',
-                'cpc_amt' => ($request->countries == 'All') ? ['required', 'numeric', 'gte:0.0001'] : ['required', 'numeric', 'gte:0.000001'],
-            ]
-        );
 
-        if ($validator->fails()) {
+    {
+
+        $validator = Validator::make(
+            $request->all() , [
+                'uid' => 'required', 
+                'ad_type' => 'required', 
+                'social_ad_type' => 'required', 
+                'ad_title' => 'required', 
+                'ad_description' => 'required', 
+                'campaign_name' => 'required',
+                'website_category' => 'required', 
+                'device_type' => 'required', 
+                'device_os' => 'required', 
+                'target_url' => 'required',  
+                'countries' => 'required', 
+                'pricing_model' => 'required', 
+                'daily_budget'      => 'required|numeric|min:15',
+                'cpc_amt'           => ($request->countries == 'All') ? ['required','numeric', 'gte:0.0001'] : ['required','numeric', 'gte:0.000001'],
+            ]);
+
+        if ($validator->fails())
+        {
             $return['code'] = 100;
             $return['error'] = $validator->errors();
             $return['msg'] = 'Validation Error';
             return json_encode($return);
         }
-
+        
         $catid = Category::select('cat_name')->where('id', $request->website_category)->where('status', 1)->where('trash', 0)->first();
-        $result = onchangecpcValidation($request->pricing_model, $catid->cat_name, $request->countries);
+        $result = onchangecpcValidation($request->pricing_model,$catid->cat_name,$request->countries);
         $arrResult = json_decode($result);
         $base_amt = $arrResult->base_amt;
-        if ($request->countries == 'All' && $request->cpc_amt < $base_amt) {
-            $return['code'] = 101;
+        if($request->countries == 'All' && $request->cpc_amt < $base_amt){
+            $return['code']    = 101;
             $return['message'] = 'Error! Invalid Bidding Amount.';
             return json_encode($return);
-        } else if ($request->countries != 'All' && $request->cpc_amt < $base_amt) {
-            $return['code'] = 101;
+        }else if($request->countries != 'All' && $request->cpc_amt < $base_amt){
+            $return['code']    = 101;
             $return['message'] = 'Error! Invalid Bidding Amount.';
             return json_encode($return);
         }
@@ -1452,32 +1683,79 @@ class AppCampaignControllers extends Controller
         $campaign = new Campaign();
 
         $campaign->ad_type = $request->ad_type;
-        $campaign->campaign_resource = 'app';
-        // if ($request->ad_type == 'text') {
-        //     $aType = 'CMPT';
-        // } elseif ($request->ad_type == 'banner') {
-        //     $aType = 'CMPB';
-        // } elseif ($request->ad_type == 'native') {
-        //     $aType = 'CMPN';
-        // } elseif ($request->ad_type == 'video') {
-        //     $aType = 'CMPV';
-        // } elseif ($request->ad_type == 'popup') {
-        //     $aType = 'CMPP';
-        // } elseif ($request->ad_type == 'social') {
-        //     $aType = 'CMPS';
-        // } else {
-        //     $aType = 'Invalid';
-        // }
 
-        $user = DB::table('users')
-            ->select('id', 'first_name', 'last_name', 'email')
+        if ($request->ad_type == 'text')
+
+        {
+
+            $aType = 'CMPT';
+
+        }
+
+        elseif ($request->ad_type == 'banner')
+
+        {
+
+            $aType = 'CMPB';
+
+        }
+
+        elseif ($request->ad_type == 'native')
+
+        {
+
+            $aType = 'CMPN';
+
+        }
+
+        elseif ($request->ad_type == 'video')
+
+        {
+
+            $aType = 'CMPV';
+
+        }
+
+        elseif ($request->ad_type == 'popup')
+
+        {
+
+            $aType = 'CMPP';
+
+        }
+
+        elseif ($request->ad_type == 'social')
+
+        {
+
+            $aType = 'CMPS';
+
+        }
+
+        else
+
+        {
+
+            $aType = 'Invalid';
+
+        }
+
+        $user = DB::table('users')->select('id', 'first_name', 'last_name', 'email')
+
             ->where('uid', $request->uid)
+
             ->first();
 
-        if ($request->countries != 'All') {
+        if ($request->countries != 'All')
+
+        {
+
             $targetCountries = json_decode($request->countries);
 
-            foreach ($targetCountries as $value) {
+            foreach ($targetCountries as $value)
+
+            {
+
                 $cuntry_list = Country::where('name', $value)->first();
 
                 $res[] = $cuntry_list->name;
@@ -1485,15 +1763,23 @@ class AppCampaignControllers extends Controller
                 $ress[] = $cuntry_list->id;
 
                 $cuntry_lists[] = Country::select('id as value', 'name as label', 'phonecode as phonecode')->where('name', $value)->first();
+
             }
 
-            $campaign->country_name = implode(',', $res);
+            $campaign->country_name = implode(",", $res);
 
-            $campaign->country_ids = implode(',', $ress);
+            $campaign->country_ids = implode(",", $ress);
 
             $campaign->countries = json_encode($cuntry_lists);
-        } else {
+
+        }
+
+        else
+
+        {
+
             $campaign->countries = $request->countries;
+
         }
 
         $campaign->advertiser_id = $user->id;
@@ -1502,7 +1788,7 @@ class AppCampaignControllers extends Controller
 
         $campaign->campaign_name = $request->campaign_name;
 
-        $campaign->campaign_id = $this->getCampaignTypePrefix($request->ad_type) . strtoupper(uniqid());
+        $campaign->campaign_id = $aType . strtoupper(uniqid());
 
         $campaign->campaign_type = $request->campaign_type;
 
@@ -1544,211 +1830,252 @@ class AppCampaignControllers extends Controller
 
         $images = $request->images;
 
-        if ($campaign->save()) {
-            // $activitylog = new Activitylog();
+        if ($campaign->save())
 
-            // $activitylog->uid = $request->uid;
+        {
 
-            // $activitylog->type = 'Added Campaign';
+            $activitylog = new Activitylog();
 
-            // $activitylog->description = '' . $campaign->campaign_id . ' is added Successfully';
+            $activitylog->uid = $request->uid;
 
-            // $activitylog->status = '1';
+            $activitylog->type = 'Added Campaign';
 
-            // $activitylog->save();
-            $this->logActivity($request->uid, $campaign->campaign_id, 'Added Campaign', $campaign->campaign_id);
+            $activitylog->description = '' . $campaign->campaign_id . ' is added Successfully';
 
-            if ($images) {
-                foreach ($images as $image) {
-                    $imageName = basename($image['img']);
-                    $response = storeCDNImage($imageName);
+            $activitylog->status = '1';
+
+            $activitylog->save();
+
+            if ($images)
+
+            {
+
+                foreach ($images as $image)
+
+                {
+
                     $arr = [
-                        'campaign_id' => $campaign->campaign_id,
-                        'advertiser_code' => $campaign->advertiser_code,
-                        'image_type' => $image['type'],
-                        'image_path' => $image['img'],
-                        'cdn_path' => $response['image-path'],
-                        'cdnimg_id' => $response['image-id'],
+
+                    'campaign_id' => $campaign->campaign_id,
+
+                    'advertiser_code' => $campaign->advertiser_code,
+
+                    'image_type' => $image['type'],
+
+                    'image_path' => basename($image['img']),
+
                     ];
 
                     AdBannerImage::insert($arr);
+
                 }
+
             }
-            $this->sendCampaignEmail($campaign, $request->uid);
-            $this->sendAdminEmail($campaign);
-            return json_encode([
-                'code' => 200,
-                'data' => $campaign,
-                'msg' => 'Campaign created successfully!'
-            ]);
 
-            /* Create Campaign Send Mail */
+            /* Create Campaign Send Mail   */
 
-            // $email = $user->email;
+            $email = $user->email;
 
-            // $fullname = $user->first_name . ' ' . $user->last_name;
+            $fullname = $user->first_name . ' ' . $user->last_name;
 
-            // $useridas = $campaign->advertiser_code;
+            $useridas = $campaign->advertiser_code;
 
-            // $campsid = $campaign->campaign_id;
+            $campsid = $campaign->campaign_id;
 
-            // $campsname = $campaign->campaign_name;
+            $campsname = $campaign->campaign_name;
 
-            // $campadtype = $campaign->ad_type;
+            $campadtype = $campaign->ad_type;
 
             /* Send to Admin */
 
-            // $data['details'] = array(
-            //     'subject' => 'Campaign Created successfully - 7Search PPC ',
-            //     'fullname' => $fullname,
-            //     'usersid' => $useridas,
-            //     'campaignid' => $campsid,
-            //     'campaignname' => $campsname,
-            //     'campaignadtype' => $campadtype
-            // );
+            $data['details'] = array(
 
-            // $subject = 'Campaign Created successfully - 7Search PPC';
+                'subject' => 'Campaign Created successfully - 7Search PPC ',
 
-            // $body = View('emailtemp.campaigncreate', $data);
+                'fullname' => $fullname,
+
+                'usersid' => $useridas,
+
+                'campaignid' => $campsid,
+
+                'campaignname' => $campsname,
+
+                'campaignadtype' => $campadtype
+
+            );
+
+            $subject = 'Campaign Created successfully - 7Search PPC';
+
+            $body = View('emailtemp.campaigncreate', $data);
 
             /* User Mail Section */
 
-            // $sendmailUser = sendmailUser($subject, $body, $email);
+            $sendmailUser = sendmailUser($subject, $body, $email);
 
-            // if ($sendmailUser == '1') {
-            //     $return['code'] = 200;
+            if ($sendmailUser == '1')
 
-            //     $return['data'] = $campaign;
+            {
 
-            //     $return['msg'] = 'Mail Send & Data Inserted Successfully !';
-            // } else {
-            //     $return['code'] = 200;
+                $return['code'] = 200;
 
-            //     $return['data'] = $campaign;
+                $return['data'] = $campaign;
 
-            //     $return['msg'] = 'Mail Not Send But Data Insert Successfully !';
-            // }
+                $return['msg'] = 'Mail Send & Data Inserted Successfully !';
 
-            // /* Admin Section */
+            }else{
 
-            // $adminmail1 = 'advertisersupport@7searchppc.com';
+                $return['code'] = 200;
 
-            // // $adminmail1 = ['advertisersupport@7searchppc.com', 'testing@7searchppc.com'];
+                $return['data'] = $campaign;
 
-            // $adminmail2 = 'info@7searchppc.com';
+                $return['msg'] = 'Mail Not Send But Data Insert Successfully !';
 
-            // $bodyadmin = View('emailtemp.campaigncreateadmin', $data);
+            }
 
-            // $subjectadmin = 'Campaign Created successfully - 7Search PPC';
+            /* Admin Section  */
 
-            // $sendmailadmin = sendmailAdmin($subjectadmin, $bodyadmin, $adminmail1, $adminmail2);
+            $adminmail1 = 'advertisersupport@7searchppc.com';
 
-            // if ($sendmailadmin == '1') {
-            //     $return['code'] = 200;
+         // $adminmail1 = ['advertisersupport@7searchppc.com', 'testing@7searchppc.com'];
 
-            //     $return['data'] = $campaign;
+            $adminmail2 = 'info@7searchppc.com';
 
-            //     $return['msg'] = 'Mail Send & Data Inserted Successfully !';
-            // } else {
-            //     $return['code'] = 200;
+            $bodyadmin = View('emailtemp.campaigncreateadmin', $data);
 
-            //     $return['data'] = $campaign;
+            $subjectadmin = 'Campaign Created successfully - 7Search PPC';
 
-            //     $return['msg'] = 'Mail Not Send But Data Insert Successfully !';
-            // }
+            $sendmailadmin = sendmailAdmin($subjectadmin, $bodyadmin, $adminmail1, $adminmail2);
+
+            if ($sendmailadmin == '1')
+
+            {
+
+                $return['code'] = 200;
+
+                $return['data'] = $campaign;
+
+                $return['msg'] = 'Mail Send & Data Inserted Successfully !';
+
+            }else{
+
+                $return['code'] = 200;
+
+                $return['data'] = $campaign;
+
+                $return['msg'] = 'Mail Not Send But Data Insert Successfully !';
+
+            }
 
             /* Campaign Create Send Mail */
-        } else {
+
+        }
+
+        else
+
+        {
+
             $return['code'] = 101;
 
             $return['msg'] = 'Something went wrong!';
+
         }
 
-        // return json_encode($return);
+        return json_encode($return);
+
     }
+
+
 
     public function updateSocial(Request $request)
     {
         $validator = Validator::make(
-            $request->all(),
-            [
-                'campaign_name' => 'required',
-                'website_category' => 'required',
-                'device_type' => 'required',
-                'social_ad_type' => 'required',
-                'device_os' => 'required',
-                'countries' => 'required',
-                'pricing_model' => 'required',
-                'daily_budget' => 'required|numeric|min:15',
-                'cpc_amt' => ($request->countries == 'All') ? ['required', 'numeric', 'gte:0.0001'] : ['required', 'numeric', 'gte:0.000001'],
-            ], [
-                'cpc_amt.numeric' => 'The cpc_amt field must be a number.',
-                'cpc_amt.gte' => 'The cpc_amt field must be greater than or equal to 0.0001.',
-            ]
-        );
-        if ($validator->fails()) {
+        $request->all() ,
+        [
+        'campaign_name' => 'required',
+        'website_category' => 'required',
+        'device_type' => 'required',
+        'social_ad_type' => 'required',
+        'device_os' => 'required',
+        'countries' => 'required',
+        'pricing_model' => 'required',
+        'daily_budget'      => 'required|numeric|min:15',
+        'cpc_amt'           => ($request->countries == 'All') ? ['required','numeric', 'gte:0.0001'] : ['required','numeric', 'gte:0.000001'],
+        ],[
+            'cpc_amt.numeric' => 'The cpc_amt field must be a number.',
+            'cpc_amt.gte' => 'The cpc_amt field must be greater than or equal to 0.0001.',
+        ]);
+        if ($validator->fails())
+        {
             $return['code'] = 100;
             $return['error'] = $validator->errors();
             $return['msg'] = 'Validation Error';
             return json_encode($return);
         }
         $catid = Category::select('cat_name')->where('id', $request->website_category)->where('status', 1)->where('trash', 0)->first();
-        $result = onchangecpcValidation($request->pricing_model, $catid->cat_name, $request->countries);
+        $result = onchangecpcValidation($request->pricing_model,$catid->cat_name,$request->countries);
         $arrResult = json_decode($result);
         $base_amt = $arrResult->base_amt;
-        if ($request->countries == 'All' && $request->cpc_amt < $base_amt) {
-            $return['code'] = 101;
+        if($request->countries == 'All' && $request->cpc_amt < $base_amt){
+            $return['code']    = 101;
             $return['message'] = 'Error! Invalid Bidding Amount.';
             return json_encode($return);
-        } else if ($request->countries != 'All' && $request->cpc_amt < $base_amt) {
-            $return['code'] = 101;
+        }else if($request->countries != 'All' && $request->cpc_amt < $base_amt){
+            $return['code']    = 101;
             $return['message'] = 'Error! Invalid Bidding Amount.';
             return json_encode($return);
         }
         $cid = $request->cid;
         $campaign = Campaign::where('campaign_id', $cid)->first();
-        $bannerImages = AdBannerImage::where('campaign_id', $cid)->get();
         $array1 = explode(',', $request->device_type);
         $array2 = explode(',', $campaign->device_type);
         // Sort the arrays
 
         sort($array1);
         sort($array2);
-        if ($array1 == $array2 && $request->ad_title == $campaign->ad_title && $request->ad_description == $campaign->ad_description && $request->website_category == $campaign->website_category && $request->pricing_model == $campaign->pricing_model && $request->cpc_amt == $campaign->cpc_amt && $campaign->countries == $request->countries) {
+        if ($array1 == $array2 && $request->ad_title == $campaign->ad_title && $request->ad_description == $campaign->ad_description && $request->website_category == $campaign->website_category && $request->pricing_model == $campaign->pricing_model && $request->cpc_amt == $campaign->cpc_amt && $campaign->countries == $request->countries)
+        {
             $status = 1;
-            $imgStatus = 1;
-            if ($request->campaign_name != $campaign->campaign_name || $request->daily_budget != $campaign->daily_budget) {
-                $status = 2;
-                $imgStatus = 2;
-                if ($campaign->status == 2) {
+            if ($request->campaign_name != $campaign->campaign_name || $request->daily_budget != $campaign->daily_budget)
+            {
+                $status =2;
+                if ($campaign->status == 2)
+                {
                     $campaign->status = 2;
                 }
             }
-        } else {
-            $status = 1;
-            $imgStatus = 1;
-            if ($campaign->status == 2) {
+        }
+        else
+        {
+            $status =1;
+            if ($campaign->status == 2)
+            {
                 $campaign->status = 1;
             }
-            if ($campaign->status == 4) {
+            if ($campaign->status == 4)
+            {
                 $campaign->status = 1;
             }
-            if ($campaign->status == 5) {
+            if ($campaign->status == 5)
+            {
                 $campaign->status = 1;
             }
         }
-        if ($request->countries != 'All') {
+        if ($request->countries != 'All')
+        {
             $targetCountries = json_decode($request->countries);
-            foreach ($targetCountries as $value) {
+            foreach ($targetCountries as $value)
+            {
                 $cuntry_list = Country::where('name', $value)->first();
                 $res[] = $cuntry_list->name;
                 $ress[] = $cuntry_list->id;
                 $cuntry_lists[] = Country::select('id as value', 'name as label', 'phonecode as phonecode')->where('name', $value)->first();
             }
-            $campaign->country_name = implode(',', $res);
-            $campaign->country_ids = implode(',', $ress);
+            $campaign->country_name = implode(",", $res);
+            $campaign->country_ids = implode(",", $ress);
             $campaign->countries = json_encode($cuntry_lists);
-        } else {
+        }
+        else
+        {
             $campaign->countries = $request->countries;
         }
         $campaign->campaign_name = $request->campaign_name;
@@ -1756,7 +2083,8 @@ class AppCampaignControllers extends Controller
         $campaign->device_os = $request->device_os;
         $campaign->ad_title = $request->ad_title;
         $campaign->ad_description = $request->ad_description;
-        if ($request->target_url != '') {
+        if ($request->target_url != '')
+        {
             $campaign->target_url = $request->target_url;
         }
         $campaign->conversion_url = $request->conversion_url;
@@ -1764,7 +2092,7 @@ class AppCampaignControllers extends Controller
         $campaign->daily_budget = $request->daily_budget;
         $campaign->social_ad_type = $request->social_ad_type;
         $campaign->pricing_model = $request->pricing_model;
-        $campaign->cpc_amt = $request->cpc_amt;
+        $campaign->cpc_amt = $request->cpc_amt; 
 
         // if ($request->pricing_model == 'CPM') {
 
@@ -1780,185 +2108,129 @@ class AppCampaignControllers extends Controller
 
         // }
 
-        // $campaign->status           = 1;
+        //$campaign->status           = 1;
 
         $images = $request->images;
-        if ($campaign->update()) {
-            /* This will update campaign data and status into Redis */
-            updateCamps($cid, $status);
-            // $activitylog = new Activitylog();
-            // $activitylog->uid = $request->uid;
-            // $activitylog->type = 'Edit Campaign';
-            // $activitylog->description = '' . $campaign->campaign_id . ' is edit Successfully';
-            // $activitylog->status = '1';
-            // $activitylog->save();
-            $this->logActivity($request->uid, $campaign->campaign_id, 'Update Campaign', $campaign->campaign_id);
-            if ($images) {
-                $previousImages = [];
-                $updatedImages = [];
-                $arr = [];
-                if ($status == 1) {
-                    if ($imgStatus == 2) {
-                        $status = 2;
-                    } else {
-                        $status = 1;
+        if ($campaign->update())
+        {
+/* This will update campaign data and status into Redis */
+        updateCamps($cid, $status);
+            $activitylog = new Activitylog();
+            $activitylog->uid = $request->uid;
+            $activitylog->type = 'Edit Campaign';
+            $activitylog->description = '' . $campaign->campaign_id . ' is edit Successfully';
+            $activitylog->status = '1';
+            $activitylog->save();
+            if ($images)
+            {
+                foreach ($images as $image)
+                {
+                    $getexistImage = AdBannerImage::select('image_path as name')->where('campaign_id',$cid)->where('advertiser_code',$request->uid)->where('image_type',$image['type'])->first();
+                    $existimg = env('STOREAD_IMAGE_URL').$getexistImage->name; // name is image name.
+                    if($getexistImage && $existimg){
+                        delstoreImages($folderName=env('CDN_FOLDER'),$fileName=$getexistImage->name);
                     }
-                } else {
-                    $status = 2;
-                }
-                foreach ($bannerImages as $bannerImage) {
-                    $previousImages[] = $bannerImage->image_type;
-                    $arr[] = $bannerImage->image_type;
-                }
-                if (!empty($request->images)) {
-                    foreach ($request->images as $image) {
-                        $image['type'];
-                        if (!in_array($image['type'], $arr)) {
-                            $arr2[] = $image['type'];
-                        } else {
-                            $arr1[] = $image['type'];
-                        }
-                        (!empty($arr1) && $updatedImages['update'] = $arr1);
-                        (!empty($arr2) && $updatedImages['added'] = $arr2);
-                    }
-                }
-                if (!empty($request->del_images)) {
-                    foreach ($request->del_images as $del_image) {
-                        $updatedImages['delete'][] = $del_image;
-                        $previousImages[] = $del_image;
-                    }
-                }
-                $campLogData['images']['previous'] = array_unique($previousImages);
-                $campLogData['images']['updated'] = $updatedImages;
-                $campLogData['message'] = 'User has updated the campaign!';
-                if (!empty($request->images)) {
-                    $campaignLogs = new CampaignLogs();
-                    $campaignLogs->uid = $request->uid;
-                    $campaignLogs->campaign_type = $campaign->ad_type;
-                    $campaignLogs->campaign_id = $campaign->campaign_id;
-                    $campaignLogs->campaign_data = json_encode($campLogData);
-                    $campaignLogs->action = 2;
-                    $campaignLogs->user_type = 1;
-                    $campaignLogs->save();
-                }
-                foreach ($images as $image) {
-                    $getexistImage = AdBannerImage::select('image_path as name', 'cdnimg_id')->where('campaign_id', $cid)->where('advertiser_code', $request->uid)->where('image_type', $image['type'])->first();
-                    // $existimg = env('STOREAD_IMAGE_URL').$getexistImage->name; // name is image name.
-                    // if($getexistImage && $existimg){
-                    //     delstoreImages($folderName=env('CDN_FOLDER'),$fileName=$getexistImage->name);
-                    // }
 
-                    $imageName = basename($image['img']);
-                    $response = storeCDNImage($imageName);
                     $img = AdBannerImage::where([
-                        ['campaign_id', '=', $campaign->campaign_id],
-                        ['advertiser_code', '=', $campaign->advertiser_code],
-                        ['image_type', '=', $image['type']]
-                    ])->update(['image_path' => $image['img'], 'cdn_path' => $response['image-path'], 'cdnimg_id' => $response['image-id']]);
+                    ['campaign_id', '=', $campaign->campaign_id],
+                    ['advertiser_code', '=', $campaign->advertiser_code],
+                    ['image_type', '=', $image['type']],
+
+                    ])->update(['image_path' => basename($image['img'])]);
                 }
-                DB::table('campaigns')->where('advertiser_code', $campaign->advertiser_code)->where('campaign_id', $campaign->campaign_id)->update(['status' => 1]);
             }
             /* Update Campaign Email Section */
+            $usersdetils = User::select('first_name', 'last_name')->where('uid', $request->uid)->first();
+            $fullname = $usersdetils->first_name . ' ' . $usersdetils->last_name;
+            $userid = $request->uid;
+            $campname = $campaign->campaign_name;
+            $campid = $campaign->campaign_id;
+            $status = $campaign->status;
+            $subjects = 'Campaign Update Successfully';
+            $data['details'] = array(
+                'fullname' => $fullname,
+                'userid' => $userid,
+                'campname' => $campname,
+                'status' => $status,
+                'campid' => $campid
+            );
 
-            $this->sendCampaignEmail($campaign, $request->uid, true);
-            $sendmailadmin = $this->sendAdminEmail($campaign, true);
-             if ($sendmailadmin == '1') {
+            /* Admin Section  */
+
+            $adminmail1 = 'advertisersupport@7searchppc.com';
+         // $adminmail1 = ['advertisersupport@7searchppc.com', 'testing@7searchppc.com'];
+            $adminmail2 = 'info@7searchppc.com';
+            $bodyadmin = View('emailtemp.campaignupdatedmin', $data);
+            $subjectadmin = 'Campaign Updated Successfully';
+            $sendmailadmin = sendmailAdmin($subjectadmin, $bodyadmin, $adminmail1, $adminmail2);
+            if ($sendmailadmin == '1')
+            {
                 $return['code'] = 200;
                 $return['data'] = $campaign;
-                delCampImage($image = basename($getexistImage->name), $cdnimg_id = $getexistImage->cdnimg_id);
                 $return['msg'] = 'Mail Send & Campaign Updated Successfully !';
-            } else {
+            }else {
                 $return['code'] = 200;
                 $return['data'] = $campaign;
-                delCampImage($image = basename($getexistImage->name), $cdnimg_id = $getexistImage->cdnimg_id);
                 $return['msg'] = 'Mail Not Send But Data Insert Successfully !';
             }
-            // $usersdetils = User::select('first_name', 'last_name')->where('uid', $request->uid)->first();
-            // $fullname = $usersdetils->first_name . ' ' . $usersdetils->last_name;
-            // $userid = $request->uid;
-            // $campname = $campaign->campaign_name;
-            // $campid = $campaign->campaign_id;
-            // $status = $campaign->status;
-            // $subjects = 'Campaign Update Successfully';
-            // $data['details'] = array(
-            //     'fullname' => $fullname,
-            //     'userid' => $userid,
-            //     'campname' => $campname,
-            //     'status' => $status,
-            //     'campid' => $campid
-            // );
 
-            // /* Admin Section */
-
-            // $adminmail1 = 'advertisersupport@7searchppc.com';
-            // // $adminmail1 = ['advertisersupport@7searchppc.com', 'testing@7searchppc.com'];
-            // $adminmail2 = 'info@7searchppc.com';
-            // $bodyadmin = View('emailtemp.campaignupdatedmin', $data);
-            // $subjectadmin = 'Campaign Updated Successfully';
-            // $sendmailadmin = sendmailAdmin($subjectadmin, $bodyadmin, $adminmail1, $adminmail2);
-            // if ($sendmailadmin == '1') {
-            //     $return['code'] = 200;
-            //     $return['data'] = $campaign;
-            //     delCampImage($image = basename($getexistImage->name), $cdnimg_id = $getexistImage->cdnimg_id);
-            //     $return['msg'] = 'Mail Send & Campaign Updated Successfully !';
-            // } else {
-            //     $return['code'] = 200;
-            //     $return['data'] = $campaign;
-            //     delCampImage($image = basename($getexistImage->name), $cdnimg_id = $getexistImage->cdnimg_id);
-            //     $return['msg'] = 'Mail Not Send But Data Insert Successfully !';
-            // }
-
-            /* End Email Section */
-        } else {
+            /* End Email Section  */
+        }
+        else
+        {
             $return['code'] = 101;
             $return['msg'] = 'Something went wrong!';
         }
-        // return json_encode($return);
+        return json_encode($return);
     }
 
+
+
     /* --------------------------- Native Campaign Funtions ----------------------------- */
+
+
 
     public function storeNative(Request $request)
     {
         $validator = Validator::make(
-            $request->all(),
-            [
-                'uid' => 'required',
-                'ad_type' => 'required',
-                'ad_title' => 'required',
-                // 'ad_description'    => 'required',
-                'campaign_name' => 'required',
-                // 'campaign_type'     => 'required',
-                'website_category' => 'required',
-                'device_type' => 'required',
-                'device_os' => 'required',
-                'target_url' => 'required',
-                'countries' => 'required',
-                'pricing_model' => 'required',
-                'daily_budget' => 'required|numeric|min:15',
-                'cpc_amt' => ($request->countries == 'All') ? ['required', 'numeric', 'gte:0.0001'] : ['required', 'numeric', 'gte:0.000001'],
-            ], [
-                'cpc_amt.numeric' => 'The cpc_amt field must be a number.',
-                'cpc_amt.gte' => 'The cpc_amt field must be greater than or equal to 0.0001.',
-            ]
-        );
+        $request->all() ,
+        [
+        'uid' => 'required',
+        'ad_type' => 'required',
+        'ad_title' => 'required',
+        //'ad_description'    => 'required',
+        'campaign_name' => 'required',
+        // 'campaign_type'     => 'required',
+        'website_category' => 'required',
+        'device_type' => 'required',
+        'device_os' => 'required',
+        'target_url' => 'required',
+        'countries' => 'required',
+        'pricing_model' => 'required',
+        'daily_budget'      => 'required|numeric|min:15',
+        'cpc_amt'           => ($request->countries == 'All') ? ['required','numeric', 'gte:0.0001'] : ['required','numeric', 'gte:0.000001'],
+        ],[
+            'cpc_amt.numeric' => 'The cpc_amt field must be a number.',
+            'cpc_amt.gte' => 'The cpc_amt field must be greater than or equal to 0.0001.',
+        ]);
 
-        if ($validator->fails()) {
+        if ($validator->fails())
+        {
             $return['code'] = 100;
             $return['error'] = $validator->errors();
             $return['msg'] = 'Validation Error';
             return json_encode($return);
         }
         $catid = Category::select('cat_name')->where('id', $request->website_category)->where('status', 1)->where('trash', 0)->first();
-        $result = onchangecpcValidation($request->pricing_model, $catid->cat_name, $request->countries);
+        $result = onchangecpcValidation($request->pricing_model,$catid->cat_name,$request->countries);
         $arrResult = json_decode($result);
         $base_amt = $arrResult->base_amt;
-        if ($request->countries == 'All' && $request->cpc_amt < $base_amt) {
-            $return['code'] = 101;
+        if($request->countries == 'All' && $request->cpc_amt < $base_amt){
+            $return['code']    = 101;
             $return['message'] = 'Error! Invalid Bidding Amount.';
             return json_encode($return);
-        } else if ($request->countries != 'All' && $request->cpc_amt < $base_amt) {
-            $return['code'] = 101;
+        }else if($request->countries != 'All' && $request->cpc_amt < $base_amt){
+            $return['code']    = 101;
             $return['message'] = 'Error! Invalid Bidding Amount.';
             return json_encode($return);
         }
@@ -1966,32 +2238,79 @@ class AppCampaignControllers extends Controller
         $campaign = new Campaign();
 
         $campaign->ad_type = $request->ad_type;
-        $campaign->campaign_resource = 'app';
-        // if ($request->ad_type == 'text') {
-        //     $aType = 'CMPT';
-        // } elseif ($request->ad_type == 'banner') {
-        //     $aType = 'CMPB';
-        // } elseif ($request->ad_type == 'native') {
-        //     $aType = 'CMPN';
-        // } elseif ($request->ad_type == 'video') {
-        //     $aType = 'CMPV';
-        // } elseif ($request->ad_type == 'popup') {
-        //     $aType = 'CMPP';
-        // } elseif ($request->ad_type == 'social') {
-        //     $aType = 'CMPS';
-        // } else {
-        //     $aType = 'Invalid';
-        // }
 
-        $user = DB::table('users')
-            ->select('id', 'first_name', 'last_name', 'email')
+        if ($request->ad_type == 'text')
+
+        {
+
+            $aType = 'CMPT';
+
+        }
+
+        elseif ($request->ad_type == 'banner')
+
+        {
+
+            $aType = 'CMPB';
+
+        }
+
+        elseif ($request->ad_type == 'native')
+
+        {
+
+            $aType = 'CMPN';
+
+        }
+
+        elseif ($request->ad_type == 'video')
+
+        {
+
+            $aType = 'CMPV';
+
+        }
+
+        elseif ($request->ad_type == 'popup')
+
+        {
+
+            $aType = 'CMPP';
+
+        }
+
+        elseif ($request->ad_type == 'social')
+
+        {
+
+            $aType = 'CMPS';
+
+        }
+
+        else
+
+        {
+
+            $aType = 'Invalid';
+
+        }
+
+        $user = DB::table('users')->select('id', 'first_name', 'last_name', 'email')
+
             ->where('uid', $request->uid)
+
             ->first();
 
-        if ($request->countries != 'All') {
+        if ($request->countries != 'All')
+
+        {
+
             $targetCountries = json_decode($request->countries);
 
-            foreach ($targetCountries as $value) {
+            foreach ($targetCountries as $value)
+
+            {
+
                 $cuntry_list = Country::where('name', $value)->first();
 
                 $res[] = $cuntry_list->name;
@@ -1999,15 +2318,19 @@ class AppCampaignControllers extends Controller
                 $ress[] = $cuntry_list->id;
 
                 $cuntry_lists[] = Country::select('id as value', 'name as label', 'phonecode as phonecode')->where('name', $value)->first();
+
             }
 
-            $campaign->country_name = implode(',', $res);
+            $campaign->country_name = implode(",", $res);
 
-            $campaign->country_ids = implode(',', $ress);
+            $campaign->country_ids = implode(",", $ress);
 
             $campaign->countries = json_encode($cuntry_lists);
-        } else {
+
+        }else{
+
             $campaign->countries = $request->countries;
+
         }
 
         $campaign->advertiser_id = $user->id;
@@ -2016,7 +2339,7 @@ class AppCampaignControllers extends Controller
 
         $campaign->campaign_name = $request->campaign_name;
 
-        $campaign->campaign_id = $this->getCampaignTypePrefix($request->ad_type) . strtoupper(uniqid());
+        $campaign->campaign_id = $aType . strtoupper(uniqid());
 
         $campaign->campaign_type = $request->campaign_type;
 
@@ -2054,216 +2377,253 @@ class AppCampaignControllers extends Controller
 
         $images = $request->images;
 
-        if ($campaign->save()) {
-            // $activitylog = new Activitylog();
+        if ($campaign->save())
 
-            // $activitylog->uid = $request->uid;
+        {
 
-            // $activitylog->type = 'Added Campaign';
+            $activitylog = new Activitylog();
 
-            // $activitylog->description = '' . $campaign->campaign_id . ' is added Successfully';
+            $activitylog->uid = $request->uid;
 
-            // $activitylog->status = '1';
+            $activitylog->type = 'Added Campaign';
 
-            // $activitylog->save();
-            $this->logActivity($request->uid, $campaign->campaign_id, 'Added Campaign', $campaign->campaign_id);
+            $activitylog->description = '' . $campaign->campaign_id . ' is added Successfully';
 
+            $activitylog->status = '1';
 
-            if ($images) {
-                foreach ($images as $image) {
-                    $imageName = basename($image['img']);
-                    $response = storeCDNImage($imageName);
+            $activitylog->save();
+
+            if ($images)
+
+            {
+
+                foreach ($images as $image)
+
+                {
+
                     $arr = [
-                        'campaign_id' => $campaign->campaign_id,
-                        'advertiser_code' => $campaign->advertiser_code,
-                        'image_type' => $image['type'],
-                        'image_path' => $image['img'],
-                        'cdn_path' => $response['image-path'],
-                        'cdnimg_id' => $response['image-id'],
+
+                    'campaign_id' => $campaign->campaign_id,
+
+                    'advertiser_code' => $campaign->advertiser_code,
+
+                    'image_type' => $image['type'],
+
+                    'image_path' => basename($image['img']),
+
                     ];
 
                     AdBannerImage::insert($arr);
+
                 }
+
             }
-            $this->sendCampaignEmail($campaign, $request->uid);
-            $this->sendAdminEmail($campaign);
-            return json_encode([
-                'code' => 200,
-                'data' => $campaign,
-                'msg' => 'Campaign created successfully!'
-            ]);
-            /* Create Campaign Send Mail */
 
-            // $email = $user->email;
+            /* Create Campaign Send Mail   */
 
-            // $fullname = $user->first_name . ' ' . $user->last_name;
+            $email = $user->email;
 
-            // $useridas = $campaign->advertiser_code;
+            $fullname = $user->first_name . ' ' . $user->last_name;
 
-            // $campsid = $campaign->campaign_id;
+            $useridas = $campaign->advertiser_code;
 
-            // $campsname = $campaign->campaign_name;
+            $campsid = $campaign->campaign_id;
 
-            // $campadtype = $campaign->ad_type;
+            $campsname = $campaign->campaign_name;
+
+            $campadtype = $campaign->ad_type;
 
             /* Send to Admin */
 
-            // $data['details'] = array(
-            //     'subject' => 'Campaign Created successfully - 7Search PPC ',
-            //     'fullname' => $fullname,
-            //     'usersid' => $useridas,
-            //     'campaignid' => $campsid,
-            //     'campaignname' => $campsname,
-            //     'campaignadtype' => $campadtype
-            // );
+            $data['details'] = array(
 
-            // $subject = 'Campaign Created successfully - 7Search PPC';
+                'subject' => 'Campaign Created successfully - 7Search PPC ',
 
-            // $body = View('emailtemp.campaigncreate', $data);
+                'fullname' => $fullname,
+
+                'usersid' => $useridas,
+
+                'campaignid' => $campsid,
+
+                'campaignname' => $campsname,
+
+                'campaignadtype' => $campadtype
+
+            );
+
+            $subject = 'Campaign Created successfully - 7Search PPC';
+
+            $body = View('emailtemp.campaigncreate', $data);
 
             /* User Mail Section */
 
-            // $sendmailUser = sendmailUser($subject, $body, $email);
+            $sendmailUser = sendmailUser($subject, $body, $email);
 
-            // if ($sendmailUser == '1') {
-            //     $return['code'] = 200;
+            if ($sendmailUser == '1')
 
-            //     $return['data'] = $campaign;
+            {
 
-            //     $return['msg'] = 'Mail Send & Data Inserted Successfully !';
-            // } else {
-            //     $return['code'] = 200;
+                $return['code'] = 200;
 
-            //     $return['data'] = $campaign;
+                $return['data'] = $campaign;
 
-            //     $return['msg'] = 'Mail Not Send But Data Insert Successfully !';
-            // }
+                $return['msg'] = 'Mail Send & Data Inserted Successfully !';
 
-            /* Admin Section */
+            }else{
 
-            // $adminmail1 = 'advertisersupport@7searchppc.com';
+                $return['code'] = 200;
 
-            // $adminmail1 = ['advertisersupport@7searchppc.com', 'testing@7searchppc.com'];
+                $return['data'] = $campaign;
 
-            // $adminmail2 = 'info@7searchppc.com';
+                $return['msg'] = 'Mail Not Send But Data Insert Successfully !';
 
-            // $bodyadmin = View('emailtemp.campaigncreateadmin', $data);
+            }
 
-            // $subjectadmin = 'Campaign Created successfully - 7Search PPC';
+            /* Admin Section  */
 
-            // $sendmailadmin = sendmailAdmin($subjectadmin, $bodyadmin, $adminmail1, $adminmail2);
+            $adminmail1 = 'advertisersupport@7searchppc.com';
 
-            // if ($sendmailadmin == '1') {
-            //     $return['code'] = 200;
+         // $adminmail1 = ['advertisersupport@7searchppc.com', 'testing@7searchppc.com'];
 
-            //     $return['data'] = $campaign;
+            $adminmail2 = 'info@7searchppc.com';
 
-            //     $return['msg'] = 'Mail Send & Data Inserted Successfully !';
-            // } else {
-            //     $return['code'] = 200;
+            $bodyadmin = View('emailtemp.campaigncreateadmin', $data);
 
-            //     $return['data'] = $campaign;
+            $subjectadmin = 'Campaign Created successfully - 7Search PPC';
 
-            //     $return['msg'] = 'Mail Not Send But Data Insert Successfully !';
-            // }
+            $sendmailadmin = sendmailAdmin($subjectadmin, $bodyadmin, $adminmail1, $adminmail2);
+
+            if ($sendmailadmin == '1')
+
+            {
+
+                $return['code'] = 200;
+
+                $return['data'] = $campaign;
+
+                $return['msg'] = 'Mail Send & Data Inserted Successfully !';
+
+            }
+
+            else
+
+            {
+
+                $return['code'] = 200;
+
+                $return['data'] = $campaign;
+
+                $return['msg'] = 'Mail Not Send But Data Insert Successfully !';
+
+            }
 
             /* Campaign Create Send Mail */
-        } else {
+
+        }
+
+        else
+
+        {
+
             $return['code'] = 101;
 
             $return['msg'] = 'Something went wrong!';
+
         }
 
-        // return json_encode($return);
+        return json_encode($return);
+
     }
+
+
 
     public function updateNative(Request $request)
     {
         $validator = Validator::make(
-            $request->all(),
-            [
-                'campaign_name' => 'required',
-                'website_category' => 'required',
-                'device_type' => 'required',
-                'device_os' => 'required',
-                'countries' => 'required',
-                'pricing_model' => 'required',
-                'daily_budget' => 'required|numeric|min:15',
-                'cpc_amt' => ($request->countries == 'All') ? ['required', 'numeric', 'gte:0.0001'] : ['required', 'numeric', 'gte:0.000001'],
-            ], [
-                'cpc_amt.numeric' => 'The cpc_amt field must be a number.',
-                'cpc_amt.gte' => 'The cpc_amt field must be greater than or equal to 0.0001.',
-            ]
-        );
-        if ($validator->fails()) {
+        $request->all() ,
+        [
+        'campaign_name' => 'required',
+        'website_category' => 'required',
+        'device_type' => 'required',
+        'device_os' => 'required',
+        'countries' => 'required',
+        'pricing_model' => 'required',
+        'daily_budget'      => 'required|numeric|min:15',
+        'cpc_amt'           => ($request->countries == 'All') ? ['required','numeric', 'gte:0.0001'] : ['required','numeric', 'gte:0.000001'],
+        ],[
+            'cpc_amt.numeric' => 'The cpc_amt field must be a number.',
+            'cpc_amt.gte' => 'The cpc_amt field must be greater than or equal to 0.0001.',
+        ]);
+        if ($validator->fails()){
             $return['code'] = 100;
             $return['error'] = $validator->errors();
             $return['msg'] = 'Validation Error';
             return json_encode($return);
         }
         $catid = Category::select('cat_name')->where('id', $request->website_category)->where('status', 1)->where('trash', 0)->first();
-        $result = onchangecpcValidation($request->pricing_model, $catid->cat_name, $request->countries);
+        $result = onchangecpcValidation($request->pricing_model,$catid->cat_name,$request->countries);
         $arrResult = json_decode($result);
         $base_amt = $arrResult->base_amt;
-        if ($request->countries == 'All' && $request->cpc_amt < $base_amt) {
-            $return['code'] = 101;
+        if($request->countries == 'All' && $request->cpc_amt < $base_amt){
+            $return['code']    = 101;
             $return['message'] = 'Error! Invalid Bidding Amount.';
             return json_encode($return);
-        } else if ($request->countries != 'All' && $request->cpc_amt < $base_amt) {
-            $return['code'] = 101;
+        }else if($request->countries != 'All' && $request->cpc_amt < $base_amt){
+            $return['code']    = 101;
             $return['message'] = 'Error! Invalid Bidding Amount.';
             return json_encode($return);
         }
         $cid = $request->cid;
         $campaign = Campaign::where('campaign_id', $cid)->first();
-        $bannerImages = AdBannerImage::where('campaign_id', $cid)->get();
         $array1 = explode(',', $request->device_type);
         $array2 = explode(',', $campaign->device_type);
         // Sort the arrays
         sort($array1);
         sort($array2);
-        if ($array1 == $array2 && $request->ad_title == $campaign->ad_title && $request->device_os == $campaign->device_os && $request->website_category == $campaign->website_category && $request->pricing_model == $campaign->pricing_model && $request->cpc_amt == $campaign->cpc_amt && $campaign->countries == $request->countries && !empty($request->images)) {
+        if ($array1 == $array2 && $request->ad_title == $campaign->ad_title && $request->device_os == $campaign->device_os && $request->website_category == $campaign->website_category && $request->pricing_model == $campaign->pricing_model && $request->cpc_amt == $campaign->cpc_amt && $campaign->countries == $request->countries && !empty($request->images))
+        {
             $status = 1;
-            $imgStatus = 1;
-            if ($request->campaign_name != $campaign->campaign_name || $request->daily_budget != $campaign->daily_budget) {
+            if ($request->campaign_name != $campaign->campaign_name || $request->daily_budget != $campaign->daily_budget){
                 $status = 2;
-                $imgStatus = 2;
-                if ($campaign->status == 2) {
+                if ($campaign->status == 2)
+                {
                     $campaign->status = 2;
                 }
             }
-        } else {
+        }
+        else{
             $status = 1;
-            $imgStatus = 1;
-            if ($campaign->status == 2) {
+            if ($campaign->status == 2){
                 $campaign->status = 1;
             }
             if ($campaign->status == 4) {
                 $campaign->status = 1;
             }
-            if ($campaign->status == 5) {
+            if ($campaign->status == 5){
                 $campaign->status = 1;
             }
         }
-        if ($request->countries != 'All') {
+        if ($request->countries != 'All'){
             $targetCountries = json_decode($request->countries);
-            foreach ($targetCountries as $value) {
+            foreach ($targetCountries as $value)
+            {
                 $cuntry_list = Country::where('name', $value)->first();
                 $res[] = $cuntry_list->name;
                 $ress[] = $cuntry_list->id;
                 $cuntry_lists[] = Country::select('id as value', 'name as label', 'phonecode as phonecode')->where('name', $value)->first();
             }
-            $campaign->country_name = implode(',', $res);
-            $campaign->country_ids = implode(',', $ress);
+            $campaign->country_name = implode(",", $res);
+            $campaign->country_ids = implode(",", $ress);
             $campaign->countries = json_encode($cuntry_lists);
-        } else {
+        }else{
             $campaign->countries = $request->countries;
         }
         $campaign->campaign_name = $request->campaign_name;
         $campaign->device_type = $request->device_type;
         $campaign->device_os = $request->device_os;
         $campaign->ad_title = $request->ad_title;
-        if ($request->target_url != '') {
+        if ($request->target_url != '')
+        {
             $campaign->target_url = $request->target_url;
         }
         $campaign->conversion_url = $request->conversion_url;
@@ -2278,139 +2638,76 @@ class AppCampaignControllers extends Controller
         // } else {
         //     $campaign->cpc_amt          = $request->cpc_amt;
         // }
-        // $campaign->status           = 1;
+        //$campaign->status           = 1;
         $images = $request->images;
-        if ($campaign->update()) {
+        if ($campaign->update())
+        {
             /* This will update campaign data and status into Redis */
-            updateCamps($cid, $status);
-            // $activitylog = new Activitylog();
-            // $activitylog->uid = $request->uid;
-            // $activitylog->type = 'Edit Campaign';
-            // $activitylog->description = '' . $campaign->campaign_id . ' is edit Successfully';
-            // $activitylog->status = '1';
-            // $activitylog->save();
-            $this->logActivity($request->uid, $campaign->campaign_id, 'Update Campaign', $campaign->campaign_id);
-
-            if ($images) {
-                $previousImages = [];
-                $updatedImages = [];
-                $arr = [];
-                if ($status == 1) {
-                    if ($imgStatus == 2) {
-                        $status = 2;
-                    } else {
-                        $status = 1;
+           updateCamps($cid, $status);
+            $activitylog = new Activitylog();
+            $activitylog->uid = $request->uid;
+            $activitylog->type = 'Edit Campaign';
+            $activitylog->description = '' . $campaign->campaign_id . ' is edit Successfully';
+            $activitylog->status = '1';
+            $activitylog->save();
+            if ($images)
+            {
+                foreach ($images as $image)
+                {
+                    $getexistImage = AdBannerImage::select('image_path as name')->where('campaign_id',$cid)->where('advertiser_code',$request->uid)->where('image_type',$image['type'])->first();
+                    $existimg = env('STOREAD_IMAGE_URL').$getexistImage->name; // name is image name.
+                    if($getexistImage && $existimg){
+                        delstoreImages($folderName=env('CDN_FOLDER'),$fileName=$getexistImage->name);
                     }
-                } else {
-                    $status = 2;
-                }
-                foreach ($bannerImages as $bannerImage) {
-                    $previousImages[] = $bannerImage->image_type;
-                    $arr[] = $bannerImage->image_type;
-                }
-                if (!empty($request->images)) {
-                    foreach ($request->images as $image) {
-                        $image['type'];
-                        if (!in_array($image['type'], $arr)) {
-                            $arr2[] = $image['type'];
-                        } else {
-                            $arr1[] = $image['type'];
-                        }
-                        (!empty($arr1) && $updatedImages['update'] = $arr1);
-                        (!empty($arr2) && $updatedImages['added'] = $arr2);
-                    }
-                }
-                if (!empty($request->del_images)) {
-                    foreach ($request->del_images as $del_image) {
-                        $updatedImages['delete'][] = $del_image;
-                        $previousImages[] = $del_image;
-                    }
-                }
-                $campLogData['images']['previous'] = array_unique($previousImages);
-                $campLogData['images']['updated'] = $updatedImages;
-                $campLogData['message'] = 'User has updated the campaign!';
-                if (!empty($request->images)) {
-                    $campaignLogs = new CampaignLogs();
-                    $campaignLogs->uid = $request->uid;
-                    $campaignLogs->campaign_type = $campaign->ad_type;
-                    $campaignLogs->campaign_id = $campaign->campaign_id;
-                    $campaignLogs->campaign_data = json_encode($campLogData);
-                    $campaignLogs->action = 2;
-                    $campaignLogs->user_type = 1;
-                    $campaignLogs->save();
-                }
-                foreach ($images as $image) {
-                    $getexistImage = AdBannerImage::select('image_path as name')->where('campaign_id', $cid)->where('advertiser_code', $request->uid)->where('image_type', $image['type'])->first();
-                    // $existimg = env('STOREAD_IMAGE_URL').$getexistImage->name; // name is image name.
-                    // if($getexistImage && $existimg){
-                    //     delstoreImages($folderName=env('CDN_FOLDER'),$fileName=$getexistImage->name);
-                    // }
-                    $imageName = basename($image['img']);
-                    $response = storeCDNImage($imageName);
                     $img = AdBannerImage::where([
-                        ['campaign_id', '=', $campaign->campaign_id],
-                        ['advertiser_code', '=', $campaign->advertiser_code],
-                        ['image_type', '=', $image['type']],
-                    ])->update(['image_path' => $image['img'], 'cdn_path' => $response['image-path'], 'cdnimg_id' => $response['image-id']]);
+                    ['campaign_id', '=', $campaign->campaign_id],
+                    ['advertiser_code', '=', $campaign->advertiser_code],
+                    ['image_type', '=', $image['type']],
+                    ])->update(['image_path' => basename($image['img'])]);
                 }
-                DB::table('campaigns')->where('advertiser_code', $campaign->advertiser_code)->where('campaign_id', $campaign->campaign_id)->update(['status' => 1]);
             }
             /* Update Campaign Email Section */
-            $this->sendCampaignEmail($campaign, $request->uid, true);
-            $sendmailadmin = $this->sendAdminEmail($campaign, true);
-             if ($sendmailadmin == '1') {
+            $usersdetils = User::select('first_name', 'last_name')->where('uid', $request->uid)
+                ->first();
+            $fullname = $usersdetils->first_name . ' ' . $usersdetils->last_name;
+            $userid = $request->uid;
+            $campname = $campaign->campaign_name;
+            $campid = $campaign->campaign_id;
+            $status = $campaign->status;
+            $subjects = 'Campaign Update Successfully';
+            $data['details'] = array(
+                'fullname' => $fullname,
+                'userid' => $userid,
+                'campname' => $campname,
+                'status' => $status,
+                'campid' => $campid
+            );
+            /* Admin Section  */
+            $adminmail1 = 'advertisersupport@7searchppc.com';
+         // $adminmail1 = ['advertisersupport@7searchppc.com', 'testing@7searchppc.com'];
+            $adminmail2 = 'info@7searchppc.com';
+            $bodyadmin = View('emailtemp.campaignupdatedmin', $data);
+            $subjectadmin = 'Campaign Updated Successfully';
+            $sendmailadmin = sendmailAdmin($subjectadmin, $bodyadmin, $adminmail1, $adminmail2);
+            if ($sendmailadmin == '1'){
                 $return['code'] = 200;
                 $return['data'] = $campaign;
-                delCampImage($image = basename($getexistImage->name), $cdnimg_id = $getexistImage->cdnimg_id);
                 $return['msg'] = 'Mail Send & Campaign Updated Successfully !';
-            } else {
+            }else{
                 $return['code'] = 200;
                 $return['data'] = $campaign;
-                delCampImage($image = basename($getexistImage->name), $cdnimg_id = $getexistImage->cdnimg_id);
                 $return['msg'] = 'Mail Not Send But Data Insert Successfully !';
             }
-            // $usersdetils = User::select('first_name', 'last_name')
-            //     ->where('uid', $request->uid)
-            //     ->first();
-            // $fullname = $usersdetils->first_name . ' ' . $usersdetils->last_name;
-            // $userid = $request->uid;
-            // $campname = $campaign->campaign_name;
-            // $campid = $campaign->campaign_id;
-            // $status = $campaign->status;
-            // $subjects = 'Campaign Update Successfully';
-            // $data['details'] = array(
-            //     'fullname' => $fullname,
-            //     'userid' => $userid,
-            //     'campname' => $campname,
-            //     'status' => $status,
-            //     'campid' => $campid
-            // );
-            // /* Admin Section */
-            // $adminmail1 = 'advertisersupport@7searchppc.com';
-            // // $adminmail1 = ['advertisersupport@7searchppc.com', 'testing@7searchppc.com'];
-            // $adminmail2 = 'info@7searchppc.com';
-            // $bodyadmin = View('emailtemp.campaignupdatedmin', $data);
-            // $subjectadmin = 'Campaign Updated Successfully';
-            // $sendmailadmin = sendmailAdmin($subjectadmin, $bodyadmin, $adminmail1, $adminmail2);
-            // if ($sendmailadmin == '1') {
-            //     $return['code'] = 200;
-            //     $return['data'] = $campaign;
-            //     delCampImage($image = basename($getexistImage->name), $cdnimg_id = $getexistImage->cdnimg_id);
-            //     $return['msg'] = 'Mail Send & Campaign Updated Successfully !';
-            // } else {
-            //     $return['code'] = 200;
-            //     $return['data'] = $campaign;
-            //     delCampImage($image = basename($getexistImage->name), $cdnimg_id = $getexistImage->cdnimg_id);
-            //     $return['msg'] = 'Mail Not Send But Data Insert Successfully !';
-            // }
-        } else {
+        }else{
             $return['code'] = 101;
             $return['msg'] = 'Something went wrong!';
         }
-        // return json_encode($return);
+        return json_encode($return);
     }
 
-    public function imageUpload(Request $request)
+
+
+    public function imageUploadOld(Request $request)
     {
         $base_str = explode(';base64,', $request->img);
         $ext = str_replace('data:image/', '', $base_str[0]);
@@ -2418,31 +2715,33 @@ class AppCampaignControllers extends Controller
         $safeName = md5(Str::random(10)) . '.' . $ext;
         $imgUpload = Storage::disk('public')->put('banner-image/' . $safeName, $image);
         $src = '/banner-image/' . $safeName;
-        // $image_path = Storage::url('app/public') . $src;
-        // $imagepathS = "../$image_path";
+        //$image_path = Storage::url('app/public') . $src;
+        //$imagepathS = "../$image_path";
         $imagepath = config('app.url') . 'image' . $src;
-        // $imagepath = 'https://services.7searchppc.com/' . $imagepathS;
-        if ($imagepath) {
+        //$imagepath = 'https://services.7searchppc.com/' . $imagepathS;
+        if ($imagepath)
+        {
             $return['code'] = 200;
             $return['image_path'] = $imagepath;
             $return['msg'] = 'Image Uploaded successfully!';
-        } else {
+        }
+        else
+        {
             $return['code'] = 101;
             $return['msg'] = 'Something went wrong!';
         }
         return json_encode($return);
     }
 
-    public function imageUploadBunny(Request $request)
-    {
+    public function imageUpload(Request $request){
         $base_str = explode(';base64,', $request->img);
         $ext = str_replace('data:image/', '', $base_str[0]);
         $image = base64_decode($base_str[1]);
-        $safeName = md5(Str::random(10)) . '.' . $ext;
+        $safeName = md5(Str::random(10)) . '.' . $ext; 
         $file_path = '/storeimages/' . $safeName;
         file_put_contents(public_path($file_path), $image);
-        $response = storeImages($folderName = env('CDN_FOLDER'), $file = $safeName);
-        $imagepath = env('STOREAD_IMAGE_URL') . $safeName;
+        $response = storeImages($folderName=env('CDN_FOLDER'), $file = $safeName);
+        $imagepath = env('STOREAD_IMAGE_URL').$safeName;
         if ($imagepath && $response == 201) {
             $return['code'] = 200;
             $return['image_path'] = $imagepath;
@@ -2454,17 +2753,20 @@ class AppCampaignControllers extends Controller
         return json_encode($return, JSON_NUMERIC_CHECK);
     }
 
+
+
     /* -------------------------------- Common Campaign Funtions ---------------------------- */
 
     public function showAd(Request $request)
+
     {
         $cid = $request->cid;
         $advertiser_code = $request->uid;
         $campaign = DB::table('campaigns')
-            ->select(DB::raw("CONCAT(ss_users.first_name, ' ', ss_users.last_name) as name, SUM(ss_adv_stats.impressions) as imprs, SUM(ss_adv_stats.clicks) as click"), 'campaigns.id', 'campaigns.campaign_name', 'campaigns.campaign_id', 'campaigns.device_type',
-                'campaigns.device_os', 'campaigns.ad_title', 'campaigns.ad_description', 'campaigns.advertiser_code', 'campaigns.website_category', 'campaigns.status', 'campaigns.ad_type', 'campaigns.daily_budget',
-                'campaigns.country_ids', 'campaigns.pricing_model', 'campaigns.cpc_amt', 'campaigns.country_name', 'campaigns.countries', 'campaigns.social_ad_type', 'campaigns.created_at', 'campaigns.target_url',
-                'campaigns.conversion_url', 'categories.cat_name', 'campaigns.campaign_type')
+            ->select(DB::raw("CONCAT(ss_users.first_name, ' ', ss_users.last_name) as name, SUM(ss_adv_stats.impressions) as imprs, SUM(ss_adv_stats.clicks) as click"), 'campaigns.id', 'campaigns.campaign_name', 'campaigns.campaign_id', 'campaigns.device_type', 
+            'campaigns.device_os', 'campaigns.ad_title', 'campaigns.ad_description', 'campaigns.advertiser_code', 'campaigns.website_category', 'campaigns.status', 'campaigns.ad_type', 'campaigns.daily_budget', 
+            'campaigns.country_ids', 'campaigns.pricing_model', 'campaigns.cpc_amt', 'campaigns.country_name', 'campaigns.countries', 'campaigns.social_ad_type', 'campaigns.created_at', 'campaigns.target_url', 
+            'campaigns.conversion_url', 'categories.cat_name')
             ->join('users', 'campaigns.advertiser_code', '=', 'users.uid')
             ->Leftjoin('adv_stats', 'campaigns.campaign_id', '=', 'adv_stats.camp_id')
             ->join('categories', 'campaigns.website_category', '=', 'categories.id')
@@ -2476,35 +2778,34 @@ class AppCampaignControllers extends Controller
             if ($campaign->ad_type == 'text') {
                 $return['data'] = $campaign;
             } elseif ($campaign->ad_type == 'banner') {
-                $images = AdBannerImage::select('image_type', 'image_path', 'cdn_path')->where('campaign_id', $campaign->campaign_id)->get();
+                $images = AdBannerImage::select('image_type', 'image_path')->where('campaign_id', $campaign->campaign_id)->get();
                 $return['data'] = $campaign;
                 $i = 0;
                 foreach ($images as $img) {
                     $i++;
-                    $return['images']['ad' . $img['image_type']] = (Storage::exists('public/banner-image/' . basename($img['image_path']))) ? $img['image_path'] : $img['cdn_path'];
-                    // $return['images']['ad' . $img['image_type']] = env('STOREAD_IMAGE_URL').$img['image_path'];
+                    $return['images']['ad' . $img['image_type']] = env('STOREAD_IMAGE_URL').$img['image_path'];
                 }
             } elseif ($campaign->ad_type == 'social') {
-                $images = AdBannerImage::select('image_type', 'image_path', 'cdn_path')->where('campaign_id', $campaign->campaign_id)->get();
+                $images = AdBannerImage::select('image_type', 'image_path')->where('campaign_id', $campaign->campaign_id)->get();
                 $return['data'] = $campaign;
                 $i = 0;
                 foreach ($images as $img) {
                     $i++;
-                    $return['images']['ad' . $i] = (Storage::exists('public/banner-image/' . basename($img['image_path']))) ? $img['image_path'] : $img['cdn_path'];
-                    // $return['images']['ad' . $i] = env('STOREAD_IMAGE_URL').$img['image_path'];
+                    $return['images']['ad' . $i] = env('STOREAD_IMAGE_URL').$img['image_path'];
                 }
             } elseif ($campaign->ad_type == 'native') {
-                $images = AdBannerImage::select('image_type', 'image_path', 'cdn_path')->where('campaign_id', $campaign->campaign_id)->get();
+                $images = AdBannerImage::select('image_type', 'image_path')->where('campaign_id', $campaign->campaign_id)->get();
                 $return['data'] = $campaign;
                 $i = 0;
                 foreach ($images as $img) {
                     $i++;
-                    $return['images']['ad' . $i] = (Storage::exists('public/banner-image/' . basename($img['image_path']))) ? $img['image_path'] : $img['cdn_path'];
                     // $return['images']['ad' . $i] = $img['image_path'];
-                    // $return['images']['ad' .  $img['image_type']] = env('STOREAD_IMAGE_URL').$img['image_path'];
+                    $return['images']['ad' .  $img['image_type']] = env('STOREAD_IMAGE_URL').$img['image_path'];
                 }
+
             } elseif ($campaign->ad_type == 'popup') {
                 $return['data'] = $campaign;
+
             }
             $return['code'] = 200;
             $return['message'] = 'Campaign data retrieved!';
@@ -2516,12 +2817,14 @@ class AppCampaignControllers extends Controller
     }
 
     public function delete(Request $request)
+
     {
         $cid = $request->cid;
         $uid = $request->uid;
         $campaign = Campaign::where('campaign_id', $cid)->where('advertiser_code', $uid)->first();
         $campaign->trash = 1;
-        if ($campaign->update()) {
+        if ($campaign->update())
+        {
             $activitylog = new Activitylog();
             $activitylog->uid = $request->uid;
             $activitylog->type = 'Delete Campaign';
@@ -2536,30 +2839,37 @@ class AppCampaignControllers extends Controller
             $campid = $cid;
             $subjects = 'Delete Campaign Successfully';
             $data['details'] = ['fullname' => $fullname, 'userid' => $userid, 'campname' => $campname, 'campid' => $campid];
-            /* Admin Section */
+            /* Admin Section  */
             $adminmail1 = 'advertisersupport@7searchppc.com';
-            // adminmail1 = ['advertisersupport@7searchppc.com', 'testing@7searchppc.com'];
+         // adminmail1 = ['advertisersupport@7searchppc.com', 'testing@7searchppc.com'];
             $adminmail2 = 'info@7searchppc.com';
             $bodyadmin = View('emailtemp.campaigndeletedmin', $data);
             $subjectadmin = 'Campaign Deleted Successfully !';
             $sendmailadmin = sendmailAdmin($subjectadmin, $bodyadmin, $adminmail1, $adminmail2);
-            if ($sendmailadmin == '1') {
+            if ($sendmailadmin == '1')
+            {
                 $return['code'] = 200;
                 $return['msg'] = 'Mail Send & Data Inserted Successfully !';
-            } else {
+            }
+            else
+            {
                 $return['code'] = 200;
                 $return['msg'] = 'Mail Not Send But Data Insert Successfully !';
             }
             $return['code'] = 200;
             $return['msg'] = 'Campaign deleted successfully!';
-        } else {
+        }
+        else
+        {
             $return['code'] = 101;
             $return['msg'] = 'Something went wrong!';
         }
         return json_encode($return);
     }
 
-    public function list(Request $request)
+
+
+    public function listTest(Request $request)
     {
         $type = $request->type;
         $uid = $request->uid;
@@ -2572,13 +2882,111 @@ class AppCampaignControllers extends Controller
         $date = date('Y-m-d');
         $user = User::where('uid', $uid)->first();
         $campaign = Campaign::selectRaw("ss_campaigns.campaign_name,ss_campaigns.campaign_id,ss_campaigns.status,ss_campaigns.ad_type, ss_campaigns.daily_budget,
+        (select IFNULL(sum(clicks),0) from ss_camp_budget_utilize camp_ck where camp_ck.camp_id = ss_campaigns.campaign_id) as click, 
+        (select IFNULL(sum(impressions),0) from ss_camp_budget_utilize ad_imp where ad_imp.camp_id = ss_campaigns.campaign_id) as imprs,
+        DATE_FORMAT(ss_campaigns.created_at, '%d %b %Y') as createdat, ss_categories.cat_name, ((select sum(amount) from 
+        ss_camp_budget_utilize ad_imp where ad_imp.camp_id = ss_campaigns.campaign_id AND DATE(ad_imp.udate) = DATE('" . $date . "') )+(select sum(amount)
+         from ss_camp_budget_utilize camp_ck where camp_ck.camp_id = ss_campaigns.campaign_id AND DATE(camp_ck.udate) = DATE('" . $date . "'))) as spent_amt")->join('categories', 'campaigns.website_category', '=', 'categories.id')
+            ->where('campaigns.advertiser_code', $uid)->where('campaigns.trash', 0);
+        if (strlen($type) > 0 and empty($status)){
+            $campaign = $campaign->where('campaigns.ad_type', $type);
+        }
+        if ($src){
+            $campaign = $campaign->whereRaw('concat(ss_campaigns.campaign_id,ss_campaigns.campaign_name,ss_campaigns.campaign_type) like ?', "%{$src}%")->orderBy('campaigns.id', 'desc');
+        }
+        if (strlen($type) > 0 and !empty($status)){
+            $campaign = $campaign->where('campaigns.ad_type', $type)->where('campaigns.status', $status);
+        }
+        if (strlen($type) <= 0 and !empty($status)){
+            $campaign = $campaign->where('campaigns.status', $status);
+        }
+        $campaign->orderBy('campaigns.id', 'desc');
+        $row = $campaign->count();
+        $data = $campaign->offset($start)->limit($limit)->get();
+        if (count($data) > 0){
+            $return['code'] = 200;
+            $return['data'] = $data;
+            $return['row'] = $row;
+            // $return['wallet'] = $user->wallet;
+            $wltAmt = getWalletAmount($uid);
+            $return['wallet']        = ($wltAmt) > 0 ? $wltAmt : $user->wallet;
+            $return['msg'] = 'Campaigns list retrieved successfully!';
+        }else{
+            if ($row){
+                $return['code'] = 103;
+                $return['message'] = 'Not Found Data !';
+                return json_encode($return, JSON_NUMERIC_CHECK);
+            }
+            $return['code'] = 101;
+            $return['msg'] = 'No Data Found!';
+        }
+        return json_encode($return, JSON_NUMERIC_CHECK);
+    }
+    // {
+    //     $type = $request->type;
+    //     $uid = $request->uid;
+    //     $limit = $request->lim;
+    //     $page = $request->page;
+    //     $status = $request->status;
+    //     $src = $request->src;
+    //     $pg = $page - 1;
+    //     $start = ($pg > 0) ? $limit * $pg : 0;
+    //     $date = date('Y-m-d');
+    //     $user = User::where('uid', $uid)->first();
+    //     $campaign = Campaign::selectRaw("ss_campaigns.campaign_name,ss_campaigns.campaign_id,ss_campaigns.status,ss_campaigns.ad_type, ss_campaigns.daily_budget,
+    //             (select IFNULL(sum(clicks),0) from ss_camp_budget_utilize  camp_ck where camp_ck.camp_id = ss_campaigns.campaign_id) as click, 
+    //             (select IFNULL(sum(impressions),0) from ss_camp_budget_utilize  ad_imp where ad_imp.camp_id = ss_campaigns.campaign_id) as imprs,
+    //             DATE_FORMAT(ss_campaigns.created_at, '%d %b %Y') as createdat, ss_categories.cat_name, 
+    //             ((select IFNULL(sum(amount),0) from ss_camp_budget_utilize ad_imp where ad_imp.camp_id = ss_campaigns.campaign_id AND DATE(ad_imp.udate) = DATE('".$date."') )) as spent_amt")
+    //             ->join('categories', 'campaigns.website_category', '=', 'categories.id')
+    //             ->where('campaigns.advertiser_code', $uid)->where('campaigns.trash', 0);                
+    //     if (strlen($type) > 0 and empty($status)) {
+    //         $campaign = $campaign->where('campaigns.ad_type', $type);
+    //     }
+    //     if ($src) {
+    //         $campaign = $campaign->whereRaw('concat(ss_campaigns.campaign_id,ss_campaigns.campaign_name,ss_campaigns.campaign_type) like ?', "%{$src}%")->orderBy('campaigns.id', 'desc');
+    //     }
+    //     if (strlen($type) > 0 and !empty($status)) {
+    //         $campaign = $campaign->where('campaigns.ad_type', $type)->where('campaigns.status', $status);
+    //     }
+    //     if (strlen($type) <= 0 and !empty($status)) {
+    //         $campaign = $campaign->where('campaigns.status', $status);
+    //     }
+    //         $campaign->orderBy('campaigns.id', 'desc');
+    //         $row = $campaign->count();
+    //         $data = $campaign->offset($start)->limit($limit)->get();
+    //     if ($row !== null) {
+    //         $return['code']    = 200;
+    //         $return['data']    = $data;
+    //         $return['row']     = $row;
+    //       	$return['wallet']  = number_format($user->wallet, 3, '.', '');
+    //         $return['message'] = 'Campaigns list retrieved successfully!';
+    //     } else {
+    //         $return['code'] = 101;
+    //         $return['message'] = 'Something went wrong!';
+    //     }
+    //     return json_encode($return, JSON_NUMERIC_CHECK);
+    // }
+
+    public function list(Request $request)
+    {
+        $type = $request->type;
+        $uid = $request->uid;
+        $limit = $request->lim;
+        $page = $request->page;
+        $status = $request->status;
+        $src = $request->src;
+        $pg = $page - 1;
+        $start = ($pg > 0) ? $limit * $pg : 0;
+        $date = date('Y-m-d');
+      	$user = User::where('uid', $uid)->first();
+        $campaign = Campaign::selectRaw("ss_campaigns.campaign_name,ss_campaigns.campaign_id,ss_campaigns.status,ss_campaigns.ad_type, ss_campaigns.daily_budget,
                 (select IFNULL(sum(clicks),0) from ss_camp_budget_utilize  camp_ck where camp_ck.camp_id = ss_campaigns.campaign_id) as click, 
                 (select IFNULL(sum(impressions),0) from ss_camp_budget_utilize  ad_imp where ad_imp.camp_id = ss_campaigns.campaign_id) as imprs,
                 DATE_FORMAT(ss_campaigns.created_at, '%d %b %Y - %h:%i %p') as createdat, ss_categories.cat_name, 
-                ((select IFNULL(sum(amount),0) from ss_camp_budget_utilize ad_imp where ad_imp.camp_id = ss_campaigns.campaign_id AND DATE(ad_imp.udate) = DATE('" . $date . "') )) as spent_amt")
-            ->join('categories', 'campaigns.website_category', '=', 'categories.id')
-            ->where('campaigns.advertiser_code', $uid)
-            ->where('campaigns.trash', 0);
+                ((select IFNULL(sum(amount),0) from ss_camp_budget_utilize ad_imp where ad_imp.camp_id = ss_campaigns.campaign_id AND DATE(ad_imp.udate) = DATE('".$date."') )) as spent_amt")
+                ->join('categories', 'campaigns.website_category', '=', 'categories.id')
+                ->where('campaigns.advertiser_code', $uid)->where('campaigns.trash', 0);                
         if (strlen($type) > 0 and empty($status)) {
             $campaign = $campaign->where('campaigns.ad_type', $type);
         }
@@ -2591,9 +2999,9 @@ class AppCampaignControllers extends Controller
         if (strlen($type) <= 0 and !empty($status)) {
             $campaign = $campaign->where('campaigns.status', $status);
         }
-        $campaign->orderBy('campaigns.id', 'desc');
-        $row = $campaign->count();
-        $data = $campaign->offset($start)->limit($limit)->get();
+            $campaign->orderBy('campaigns.id', 'desc');
+            $row = $campaign->count();
+            $data = $campaign->offset($start)->limit($limit)->get();
         // if ($row !== null) {
         //     $return['code']    = 200;
         //     $return['data']    = $data;
@@ -2606,14 +3014,15 @@ class AppCampaignControllers extends Controller
         // }
         // return json_encode($return, JSON_NUMERIC_CHECK);
         if ($row > 0) {
-            if (count($data) > 0) {
-                $return['code'] = 200;
-                $return['data'] = $data;
-                $return['row'] = $row;
+            if(count($data) > 0){
+                $return['code']    = 200;
+                $return['data']    = $data;
+                $return['row']     = $row;
+                // $return['wallet']  = number_format($user->wallet, 3, '.', '');
                 $wltAmt = getWalletAmount($uid);
-                $return['wallet'] = ($wltAmt) > 0 ? number_format($wltAmt, 3, '.', '') : number_format($user->wallet, 3, '.', '');
+                $return['wallet']        = ($wltAmt) > 0 ? number_format($wltAmt, 3, '.', '') : number_format($user->wallet, 3, '.', '');
                 $return['message'] = 'Campaigns list retrieved successfully!';
-            } else {
+            }else{
                 $return['code'] = 103;
                 $return['message'] = 'End of the line! No more listings available for now.';
             }
@@ -2624,38 +3033,43 @@ class AppCampaignControllers extends Controller
         return json_encode($return, JSON_NUMERIC_CHECK);
     }
 
+
+
     public function campaignStatusUpdate(Request $request)
     {
         $cid = $request->cid;
         $adv_code = $request->uid;
         $status = $request->status;
-        if ($status == 2) {
+        if ($status == 2){
             $obj = Campaign::where('campaign_id', $cid)->where('advertiser_code', $adv_code);
-        } elseif ($status == 4) {
+        }
+        elseif ($status == 4){
             $obj = Campaign::where('campaign_id', $cid)->where('advertiser_code', $adv_code);
-        } else {
+        }else{
             $return['code'] = 102;
             $return['msg'] = 'Something went wrong!';
             return json_encode($return);
         }
         $cnt = $obj->count();
-        if ($cnt > 0) {
+        if ($cnt > 0){
             $cStatus = $obj->first();
             $cStatus->status = $status;
-            if ($cStatus->update()) {
+            if ($cStatus->update()){
                 $return['code'] = 200;
                 $return['msg'] = 'Campaign status updated successfully!';
-            } else {
+            }else{
                 $return['code'] = 101;
                 $return['msg'] = 'Something went wrong!';
             }
-        } else {
+        }else{
             $return['code'] = 103;
             $return['msg'] = 'Something went wrong!';
             return json_encode($return);
         }
         return json_encode($return);
     }
+
+
 
     public function campaignAction(Request $request)
     {
@@ -2664,7 +3078,7 @@ class AppCampaignControllers extends Controller
         $type = $request->type;
         $count = 0;
         $trs = 0;
-        if ($type == 'active') {
+        if ($type == 'active'){
             $sts = 2;
             $campaign = Campaign::where('campaign_id', $cid)->where('advertiser_code', $uid)->where('status', 4)->first();
             $activitylog = new Activitylog();
@@ -2674,11 +3088,10 @@ class AppCampaignControllers extends Controller
             $activitylog->status = '1';
             $activitylog->save();
             $msg = 'Campaign Active successfully!';
-        } elseif ($type == 'pause') {
+        }
+        elseif ($type == 'pause'){
             $sts = 4;
-            $campaign = Campaign::where('campaign_id', $cid)
-                ->where('advertiser_code', $uid)
-                ->where('status', 2)
+            $campaign = Campaign::where('campaign_id', $cid)->where('advertiser_code', $uid)->where('status', 2)
                 ->first();
             $activitylog = new Activitylog();
             $activitylog->uid = $uid;
@@ -2688,11 +3101,9 @@ class AppCampaignControllers extends Controller
             $activitylog->save();
             $msg = 'Campaign Pause successfully!';
         }
-        if ($type == 'delete') {
+        if ($type == 'delete'){
             $trs = 1;
-            $campaign = Campaign::where('campaign_id', $cid)
-                ->where('advertiser_code', $uid)
-                ->where('trash', 0)
+            $campaign = Campaign::where('campaign_id', $cid)->where('advertiser_code', $uid)->where('trash', 0)
                 ->first();
             $activitylog = new Activitylog();
             $activitylog->uid = $uid;
@@ -2701,43 +3112,39 @@ class AppCampaignControllers extends Controller
             $activitylog->status = '1';
             $activitylog->save();
             $msgs = 'Campaign Deleted Successfully!';
-        } else {
+        } else{
             $trs = 0;
             $msgs = $msg;
         }
-        if ($campaign) {
-            if ($trs == 0) {
+        if ($campaign){
+            if ($trs == 0)
+            {
                 $campaign->status = $sts;
-                $campaign->updated_at = now();
-            } else {
+            }else{
                 $sts = 1;
                 $campaign->trash = 1;
             }
             $campaign->update();
             $count++;
         }
-        if ($count > 0) {
+        if ($count > 0){
             /* This will update campaign into Redis */
             updateCamps($cid, $sts);
             $return['code'] = 200;
             $return['data'] = $campaign;
             $return['rows'] = $count;
             $return['msg'] = $msgs;
-        } else {
+        }else{
             $return['code'] = 101;
             $return['msg'] = 'Something went wrong!';
         }
         return json_encode($return);
     }
-
     public function duplicateCampaign(Request $request)
     {
         $cid = $request->cid;
         $uid = $request->uid;
-        $copyCampaign = Campaign::select('*')
-            ->where('campaign_id', $cid)
-            ->where('advertiser_code', $uid)
-            ->first()
+        $copyCampaign = Campaign::select('*')->where('campaign_id', $cid)->where('advertiser_code', $uid)->first()
             ->toArray();
         $adType = $copyCampaign['ad_type'];
         $pref = getCampPrefix($adType);
@@ -2748,26 +3155,13 @@ class AppCampaignControllers extends Controller
         $copyCampaign['created_at'] = date('Y-m-d H:i:s');
         $copyCampaign['updated_at'] = date('Y-m-d H:i:s');
         $res = Campaign::insert($copyCampaign);
-        if ($res) {
-            if ($adType == 'banner' || $adType == 'native' || $adType == 'social') {
-                $images = AdBannerImage::where('advertiser_code', $uid)
-                    ->where('campaign_id', $cid)
-                    ->get()
+        if ($res)
+        {
+            if ($adType == 'banner' || $adType == 'native' || $adType == 'social'){
+                $images = AdBannerImage::where('advertiser_code', $uid)->where('campaign_id', $cid)->get()
                     ->toArray();
-                foreach ($images as $img) {
-                    $url = $img['image_path'];
-                    $fileName = basename($img['image_path']);
-                    $ext = pathinfo($fileName, PATHINFO_EXTENSION);
-                    $imageName = md5(Str::random(10)) . ($ext ? '.' . $ext : '');
-                    $imageContent = file_get_contents($url);
-                    if ($imageContent) {
-                        Storage::disk('public')->put('banner-image/' . $imageName, $imageContent);
-                        $imagePath = config('app.url') . 'image/banner-image/' . $imageName;
-                        $response = storeCDNImage($imageName);
-                        $img['image_path'] = $imagePath;
-                        $img['cdn_path'] = $response['image-path'];
-                        $img['cdnimg_id'] = $response['image-id'];
-                    }
+                foreach ($images as $img)
+                {
                     $img['campaign_id'] = $copyCampaign['campaign_id'];
                     $img['created_at'] = date('Y-m-d H:i:s');
                     $img['updated_at'] = date('Y-m-d H:i:s');
@@ -2775,11 +3169,10 @@ class AppCampaignControllers extends Controller
                     AdBannerImage::insert($img);
                 }
             }
-            $user = DB::table('users')
-                ->select('id', 'first_name', 'last_name', 'email')
+            $user = DB::table('users')->select('id', 'first_name', 'last_name', 'email')
                 ->where('uid', $request->uid)
                 ->first();
-            /* Create Campaign Send Mail */
+            /* Create Campaign Send Mail   */
             $email = $user->email;
             $fullname = $user->first_name . ' ' . $user->last_name;
             $useridas = $copyCampaign['advertiser_code'];
@@ -2789,16 +3182,16 @@ class AppCampaignControllers extends Controller
             /* Send to Admin */
             $mailsentdetals = ['subject' => 'Campaign Creation Request ', 'fullname' => $fullname, 'usersid' => $useridas, 'campaignid' => $campsid, 'campaignname' => $campsname, 'campaignadtype' => $campadtype];
             $adminmail1 = 'advertisersupport@7searchppc.com';
-            // $adminmail1 = ['advertisersupport@7searchppc.com', 'testing@7searchppc.com'];
+         // $adminmail1 = ['advertisersupport@7searchppc.com', 'testing@7searchppc.com'];
             $adminmail2 = 'info@7searchppc.com';
             $mailTo = [$adminmail1, $adminmail2];
-            try {
+            try{
                 Mail::to($mailTo)->send(new CreateCampMailAdmin($mailsentdetals));
                 Mail::to($email)->send(new CreateCampMail($mailsentdetals));
                 $return['code'] = 200;
                 $return['data'] = $copyCampaign;
                 $return['message'] = 'Campaign detail added successfully!';
-            } catch (Exception $e) {
+            }catch(Exception $e){
                 $return['code'] = 200;
                 $return['data'] = $copyCampaign;
                 $return['msg'] = 'Campaign detail added successfully!. But mail not send to the user.';
@@ -2814,18 +3207,18 @@ class AppCampaignControllers extends Controller
             $return['camp_id'] = $copyCampaign['campaign_id'];
             $return['adtype'] = $adType;
             $return['message'] = 'Campaign Saved!';
-        } else {
+        }else{
             $return['code'] = 101;
             $return['message'] = 'Something went wrong!';
         }
         return json_encode($return, JSON_NUMERIC_CHECK);
     }
-
-    public function onchangecpc(Request $request)
+   public function onchangecpc(Request $request)
     {
-        $typename = $request->type;
-        $catname = $request->cat_name;
-        $country = $request->country;
+        
+        $typename   = $request->type;
+        $catname   = $request->cat_name;
+        $country   = $request->country;
         $catid = Category::where('cat_name', $catname)->where('status', 1)->where('trash', 0)->first();
         if (empty($catid)) {
             $return['code'] = 101;
@@ -2839,23 +3232,23 @@ class AppCampaignControllers extends Controller
             ->where('pricing_model', $typename)
             ->where('website_category', $cid)
             ->where('trash', 0)
-            ->groupBy('cpc_amt')
+             ->groupBy('cpc_amt')
             ->orderBy('cpc_amt', 'DESC')
             ->limit(5)
             ->get();
-        if ($typename != 'CPM' && $typename != 'CPC') {
+        if($typename != 'CPM' && $typename != 'CPC'){
             $return['code'] = 101;
             $return['message'] = 'Invalid type name, allow only- CPM or CPC!';
             return json_encode($return);
         }
         $cpcid = $catid->id;
         $query = DB::table('campaigns')
-            ->select(DB::raw('MAX(cpc_amt) as cpc_amt'))
-            ->where('website_category', $cpcid)
-            ->where('trash', 0)
-            ->where('status', 2)
-            ->where('pricing_model', $typename)
-            ->first();
+        ->select(DB::raw('MAX(cpc_amt) as cpc_amt'))
+        ->where('website_category', $cpcid)
+        ->where('trash', 0)
+        ->where('status', 2)
+        ->where('pricing_model', $typename)
+        ->first();
         if (empty($country)) {
             if ($typename == 'CPC') {
                 $cpcamt = $catid->cpc;
@@ -2892,45 +3285,50 @@ class AppCampaignControllers extends Controller
                 $return['code'] = 101;
                 $return['message'] = 'Invalid Format';
             }
-        } else {
+        }else{
             $pubrateData = DB::table('pub_rate_masters')
-                ->select('category_id', 'category_name', 'country_name',
-                    DB::raw('MAX(ss_pub_rate_masters.cpm) as cpm_amt'),
-                    DB::raw('MAX(ss_pub_rate_masters.cpc) as cpc_amt'))
-                ->where('category_name', $catname)
-                ->whereIn('country_name', $country)
-                ->where('status', 0)
-                ->first();;
+            ->select('category_id','category_name','country_name',
+                DB::raw('MAX(ss_pub_rate_masters.cpm) as cpm_amt'),
+                DB::raw('MAX(ss_pub_rate_masters.cpc) as cpc_amt')
+            )
+            ->where("category_name", $catname)
+            ->whereIn("country_name", $country)
+            ->where('status', 0)->first();;
             $cpmamt = $pubrateData->cpm_amt;
             $cpcamt = $pubrateData->cpc_amt;
             $cpcid = $pubrateData->category_id;
             $query2 = DB::table('campaigns')
-                ->select(DB::raw('MAX(cpc_amt) as max_amt'))
-                ->where('website_category', $cpcid)
-                ->where('trash', 0)
-                ->where('status', 2)
-                ->where('pricing_model', $typename)
-                ->whereIn('country_name', $country)
-                ->first();
-            if (!empty($pubrateData) && !empty($cpmamt) && !empty($cpcamt)) {
-                if ($typename == 'CPM') {
-                    $return['code'] = 200;
-                    $return['base_amt'] = $cpmamt;
-                    $return['high_amt'] = $result;
-                    $return['message'] = 'CPM Data found successfully.';
-                } else {
-                    $return['code'] = 200;
-                    $return['base_amt'] = $cpcamt;
-                    $return['high_amt'] = $result;
-                    $return['message'] = 'CPC Data found successfully.';
+                            ->select(DB::raw('MAX(cpc_amt) as max_amt'))
+                            ->where('website_category', $cpcid)
+                            ->where('trash', 0)
+                            ->where('status', 2)
+                            ->where('pricing_model', $typename)
+                            ->whereIn('country_name',$country)
+                            ->first();
+            if(!empty($pubrateData) && !empty($cpmamt) && !empty($cpcamt))
+            {
+                if($typename == 'CPM')
+                {
+                $return['code'] = 200;
+                $return['base_amt'] = $cpmamt;
+                $return['high_amt'] =  $result;
+                $return['message'] = "CPM Data found successfully.";
                 }
-            } else {
+                else {
+                $return['code'] = 200;
+                $return['base_amt'] = $cpcamt;
+                $return['high_amt'] = $result;
+                $return['message'] = "CPC Data found successfully.";
+            } 
+          }
+            else
+            {
                 if ($typename == 'CPC') {
                     $cpcamt = $catid->cpc;
                     if (empty($query)) {
                         $return['code'] = 200;
                         $return['base_amt'] = $cpcamt;
-                        $return['high_amt'] = $result;
+                        $return['high_amt'] =$result;
                         $return['message'] = 'Successfully found !';
                         return json_encode($return, JSON_NUMERIC_CHECK);
                     } else {
@@ -2961,17 +3359,19 @@ class AppCampaignControllers extends Controller
                     $return['message'] = 'Invalid Format';
                 }
             }
+
         }
 
         return json_encode($return, JSON_NUMERIC_CHECK);
     }
-
     public function deleteCampaignImageOld(Request $request)
     {
-        foreach ($request->images as $key => $value) {
+        foreach ($request->images as $key => $value)
+        {
             $path = 'banner-image/' . $value;
-            if (Storage::disk('public')->exists($path)) {
-                Storage::disk('public')->delete($path);
+            if (Storage::disk('public')->exists($path))
+            {
+               Storage::disk('public')->delete($path);
             }
         }
         AdBannerImage::whereIn('image_type', $request->images)
@@ -2981,48 +3381,43 @@ class AppCampaignControllers extends Controller
         $return['message'] = 'Campaign updated successfully!';
         return json_encode($return, JSON_NUMERIC_CHECK);
     }
-
+    
     public function deleteCampaignImage(Request $request)
     {
-        $imageTypes = json_decode($request->images, true);
-        $data = AdBannerImage::select('image_path', 'cdnimg_id')
-            ->whereIn('image_type', $imageTypes)
-            ->where('campaign_id', $request->cid)
-            ->get();
-        if ($data->isEmpty()) {
-            return response()->json([
-                'code' => 101,
-                'message' => 'Image data not found!'
-            ], 400);
-        }
-
-        foreach ($data as $img) {
-            // delstoreImages(env('CDN_FOLDER'), $img['image_path']);
-            $imgName = basename($img['image_path']);
-            if (Storage::exists('public/banner-image/' . $imgName)) {
-                delCampImage($imgName, $img['cdnimg_id']);
-            } else {
-                delCampImage('', $img['cdnimg_id']);
+        $data = AdBannerImage::select('image_path')->whereIn('image_type', $request->images)->where('campaign_id', $request->cid)->get();
+        if (count($data) > 0) {
+            $success = "";
+            foreach ($data as $img) {
+                $response = delstoreImages($folderName=env('CDN_FOLDER'),$fileName=$img['image_path']);
+                 $success = true;
             }
+            if ($success) {
+                AdBannerImage::whereIn('image_type', $request->images) ->where('campaign_id', $request->cid)->delete();
+                $return['code'] = 200;
+                $return['message'] = 'Campaign image deleted successfully!';
+                return response()->json($return, 200, [], JSON_NUMERIC_CHECK);
+            } else {
+                $return['code'] = 500;
+                $return['message'] = 'Failed to delete one or more images.';
+                return response()->json($return, 500, [], JSON_NUMERIC_CHECK);
+            }
+        } else {
+            $return['code'] = 404;
+            $return['message'] = "Image data not found!";
+            return response()->json($return, 404, [], JSON_NUMERIC_CHECK);
         }
-        AdBannerImage::whereIn('image_type', $imageTypes)
-            ->where('campaign_id', $request->cid)
-            ->delete();
-
-        return response()->json([
-            'code' => 200,
-            'message' => 'Campaign image deleted successfully!'
-        ]);
     }
 
     public function get_size(Request $request)
     {
         $url = $request->url;
-        if (!empty($url)) {
+        if (!empty($url))
+        {
             list($width, $height) = getimagesize($url);
             return json_encode(['width' => $width, 'height' => $height, 'message' => 'Image Size Fetched.', 'code' => 200]);
-        } else {
-            return 'Url not found!..';
+        }else{
+            return "Url not found!..";
         }
     }
 }
+

@@ -89,7 +89,7 @@ class NotificationAdminController extends Controller
                     foreach ($advertiseruser as $valueadvertiser) {
                         $data[] =
                             [
-                                'notifuser_id'=> gennotificationuseruniq(),
+                                'notifuser_id' => gennotificationuseruniq(),
                                 'noti_id' => $notification->id,
                                 'user_id' => $valueadvertiser->uid,
                                 'user_type' => $valueadvertiser->user_type,
@@ -104,7 +104,7 @@ class NotificationAdminController extends Controller
                     $deviceToken = [];
                     foreach ($advertiseruser as $valueadvertiser) {
                         $data[] = [
-                            'notifuser_id'=> gennotificationuseruniq(),
+                            'notifuser_id' => gennotificationuseruniq(),
                             'noti_id' => $notification->id,
                             'user_id' => $valueadvertiser->uid,
                             'user_type' => $valueadvertiser->user_type,
@@ -119,7 +119,7 @@ class NotificationAdminController extends Controller
                     $deviceToken = [];
                     foreach ($advertiseruser as $valueadvertiser) {
                         $data[] = [
-                            'notifuser_id'=> gennotificationuseruniq(),
+                            'notifuser_id' => gennotificationuseruniq(),
                             'noti_id' => $notification->id,
                             'user_id' => $valueadvertiser->uid,
                             'user_type' => $valueadvertiser->user_type,
@@ -149,23 +149,23 @@ class NotificationAdminController extends Controller
                 $deviceToken = [];
                 foreach ($userids as $insertdata) {
                     $userdatasp = User::where('uid', $insertdata)->where('trash', 0)->where('status', 0)->first();
-                  	$pubToken = [];
-                    $fdata[] =  
+                    $pubToken = [];
+                    $fdata[] =
                         [
-                            'notifuser_id'=> gennotificationuseruniq(),
+                            'notifuser_id' => gennotificationuseruniq(),
                             'noti_id' => $notification->id,
                             'user_id' => $userdatasp->uid,
                             'user_type' => $userdatasp->user_type,
-                      		'view' => 0,
+                            'view' => 0,
                             'created_at' => Carbon::now(),
                             'updated_at' => now()
                         ];
-                  	$pubToken[] = $userdatasp->pub_noti_token;
-                  	$deviceToken[] = $userdatasp->device_token;
+                    $pubToken[] = $userdatasp->pub_noti_token;
+                    $deviceToken[] = $userdatasp->device_token;
                 }
                 if (UserNotification::insert($fdata)) {
                     sendFcmNotificationAdmin($request->title, $request->noti_desc, $deviceToken);
-                  	sendFcmPubNotification($request->title, $request->noti_desc, $pubToken);
+                    sendFcmPubNotification($request->title, $request->noti_desc, $pubToken);
                     $return['code'] = 200;
                     $return['data']    = $notification;
                     $return['msg'] = 'Notification Added has been Sucessfully.';
@@ -177,28 +177,86 @@ class NotificationAdminController extends Controller
             return json_encode($return);
         }
     }
-    
+
+    // public function view_all_list_notification(Request $request)
+    // {
+    //     $type = $request->type;
+    //     $limit = $request->lim;
+    //     $page = $request->page;
+    //     $src = $request->src;
+    //     $startDate = $request->startDate;
+    //     $sort_order = $request->sort_order;
+    //   	$col = $request->col;
+    //     $nfromdate = date('Y-m-d', strtotime($startDate));
+    //     $endDate = $request->endDate;
+    //     $pg = $page - 1;
+    //     $start = ($pg > 0) ? $limit * $pg : 0;
+
+    //     $getdata = DB::table('notifications')
+    //             ->select(DB::raw(" IF(ss_notifications.all_users = 1, 'All',  ( SELECT GROUP_CONCAT(CONCAT(us.first_name, ' ', us.last_name)) FROM ss_user_notifications un, ss_users us WHERE un.noti_id = ss_notifications.id AND us.uid = un.user_id)) as uname"), 'id', 'title', 'noti_desc', 'noti_type', 'noti_for', 'display_url', 'status', 'created_at', 'updated_at')
+    //             ->where('notifications.trash', 0);
+
+    //     if ($startDate && $endDate) {
+    //         $getdata->whereDate('notifications.created_at', '>=', $nfromdate)
+    //         ->whereDate('notifications.created_at', '<=', $endDate);
+    //     }
+
+    //     if ($src) {
+    //         $getdata->where('notifications.title', 'like', '%' . $src . '%');
+    //     }
+
+    //     if (strlen($type) > 0) {
+    //         $getdata->where('notifications.noti_type', $type);
+    //     }
+
+    //     if (strlen($type) > 0 && $startDate && $endDate) {
+    //         $getdata->where('notifications.noti_type', $type)->whereDate('notifications.created_at', '>=', $nfromdate)
+    //         ->whereDate('notifications.created_at', '<=', $endDate);
+    //     }
+    //     $row = $getdata->count();
+    //     if($col)
+    //     {
+    //       $data = $getdata->orderBy('notifications.'.$col, $sort_order)->offset($start)->limit($limit)->get();
+    //     }
+    //     else
+    //     {
+    //       $data = $getdata->orderBy('id', 'DESC')->offset( $start )->limit( $limit )->get();
+    //     }
+    //     if ($row != null) {
+    //         $return['code'] = 200;
+    //         $return['msg'] = 'All Data Notification';
+    //         $return['row']     = $row;
+    //         $return['data']    = $data;
+    //     } else {
+    //         $return['code'] = 101;
+    //         $return['msg'] = 'Error: Please contact administrator.';
+    //     }
+    //     return json_encode($return, JSON_NUMERIC_CHECK);
+    // }
+
     public function view_all_list_notification(Request $request)
     {
         $type = $request->type;
+        $notifor = $request->noti_for;
         $limit = $request->lim;
         $page = $request->page;
         $src = $request->src;
         $startDate = $request->startDate;
         $sort_order = $request->sort_order;
-      	$col = $request->col;
+        $col = $request->col;
         $nfromdate = date('Y-m-d', strtotime($startDate));
         $endDate = $request->endDate;
+        $endDate = date('Y-m-d', strtotime($endDate));
         $pg = $page - 1;
         $start = ($pg > 0) ? $limit * $pg : 0;
 
         $getdata = DB::table('notifications')
-                ->select(DB::raw(" IF(ss_notifications.all_users = 1, 'All',  ( SELECT GROUP_CONCAT(CONCAT(us.first_name, ' ', us.last_name)) FROM ss_user_notifications un, ss_users us WHERE un.noti_id = ss_notifications.id AND us.uid = un.user_id)) as uname"), 'id', 'title', 'noti_desc', 'noti_type', 'noti_for', 'display_url', 'status', 'created_at', 'updated_at')
-                ->where('notifications.trash', 0);
+            ->select(DB::raw(" IF(ss_notifications.all_users = 1, 'All',  ( SELECT GROUP_CONCAT(CONCAT(us.first_name, ' ', us.last_name)) FROM ss_user_notifications un, ss_users us WHERE un.noti_id = ss_notifications.id AND us.uid = un.user_id)) as uname"), 'id', 'title', 'noti_desc', 'noti_type', 'noti_for', 'display_url', 'status', 'created_at', 'updated_at')
+            ->where('notifications.trash', 0);
 
         if ($startDate && $endDate) {
             $getdata->whereDate('notifications.created_at', '>=', $nfromdate)
-            ->whereDate('notifications.created_at', '<=', $endDate);
+                ->whereDate('notifications.created_at', '<=', $endDate);
         }
 
         if ($src) {
@@ -208,28 +266,31 @@ class NotificationAdminController extends Controller
         if (strlen($type) > 0) {
             $getdata->where('notifications.noti_type', $type);
         }
+        
+        if (strlen($notifor) > 0) {
+            $getdata->where('notifications.noti_for', $notifor);
+        }
 
         if (strlen($type) > 0 && $startDate && $endDate) {
             $getdata->where('notifications.noti_type', $type)->whereDate('notifications.created_at', '>=', $nfromdate)
-            ->whereDate('notifications.created_at', '<=', $endDate);
+                ->whereDate('notifications.created_at', '<=', $endDate);
         }
         $row = $getdata->count();
-        if($col)
-        {
-          $data = $getdata->orderBy('notifications.'.$col, $sort_order)->offset($start)->limit($limit)->get();
+        if ($col) {
+            $data = $getdata->orderBy('notifications.' . $col, $sort_order)->offset($start)->limit($limit)->get();
+        } else {
+            $data = $getdata->orderBy('id', 'DESC')->offset($start)->limit($limit)->get();
         }
-        else
-        {
-          $data = $getdata->orderBy('id', 'DESC')->offset( $start )->limit( $limit )->get();
-        }
-        if ($row != null) {
-            $return['code'] = 200;
+        if ($row > 0) {
+            // $roleData = checkPermission(298);
+            $return['code']  = 200;
+            $return['data']  = $data;
+            $return['row']   = $row;
             $return['msg'] = 'All Data Notification';
-            $return['row']     = $row;
-            $return['data']    = $data;
         } else {
             $return['code'] = 101;
             $return['msg'] = 'Error: Please contact administrator.';
+            $return['data'] = $data;
         }
         return json_encode($return, JSON_NUMERIC_CHECK);
     }
@@ -356,11 +417,11 @@ class NotificationAdminController extends Controller
             $return['err'] = $validator->errors();
             return response()->json($return);
         }
-        if($request->noti_for == 1){
+        if ($request->noti_for == 1) {
             $notifor = 2;
-        }elseif($request->noti_for == 2){
+        } elseif ($request->noti_for == 2) {
             $notifor = 1;
-        }else{
+        } else {
             $notifor = 3;
         }
         if ($notifor <= 3 && $notifor > 0) {
@@ -446,27 +507,26 @@ class NotificationAdminController extends Controller
         }
         return json_encode($return, JSON_NUMERIC_CHECK);
     }
-    
+
     public function notiAction(Request $request)
     {
-      	$id    = $request->id;
+        $id    = $request->id;
         $type   = $request->type;
         $count  = 0;
-                
-        if ($type == 'delete') {
-          $trash = 1;
-          $adminnoti = Notification::whereIn('id', $id)->update(['trash' => 1]);
-          $user = UserNotification::whereIn('noti_id', $id)->update(['trash' => 1]);
-          $count++;
-        }
-      	else {
-          $trash = 0;
-          $adminnoti = Notification::whereIn('id', $id)->update(['trash' => 1]);
-          $user = UserNotification::whereIn('noti_id', $id)->update(['trash' => 1]);
-          $count++;
-        } 
 
-        
+        if ($type == 'delete') {
+            $trash = 1;
+            $adminnoti = Notification::whereIn('id', $id)->update(['trash' => 1]);
+            $user = UserNotification::whereIn('noti_id', $id)->update(['trash' => 1]);
+            $count++;
+        } else {
+            $trash = 0;
+            $adminnoti = Notification::whereIn('id', $id)->update(['trash' => 1]);
+            $user = UserNotification::whereIn('noti_id', $id)->update(['trash' => 1]);
+            $count++;
+        }
+
+
         if ($count > 0) {
             $return['code'] = 200;
             $return['data'] = $adminnoti;

@@ -166,5 +166,3 @@ Route::post('chagepass', [CouponController::class, 'changepass']);
 
 Route::get('image/{dir}/{img}', [ImageController::class, 'show']);
    // Route::get('uploadcountryip', [CouponController::class, 'upload_cuntry_ip']);
-
-

@@ -228,7 +228,7 @@ class ManageAdminPaymentSettingController extends Controller
             $return['msg'] = 'Otp Sent Successfully.';
         } else {
             $return['code'] = 101;
-            $return['msg'] =  $otp;
+            $return['msg'] = 'Email Not Send.';
         }
         return response()->json($return);
     }

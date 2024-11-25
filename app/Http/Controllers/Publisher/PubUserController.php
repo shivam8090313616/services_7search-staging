@@ -67,7 +67,7 @@ class PubUserController extends Controller
    */
   public function profileInfo($uid)
   {
-    $user = User::select('phonecode', 'first_name', 'last_name', 'email', 'phone', 'address_line1', 'address_line2', 'city', 'state', 'country', 'pub_wallet', 'profile_lock', 'messenger_name', 'messenger_type', 'del_request', 'user_type','pub_wallet as wallet')
+    $user = User::select('phonecode', 'first_name', 'last_name', 'email', 'phone', 'address_line1', 'address_line2', 'city', 'state', 'country', 'pub_wallet', 'profile_lock', 'messenger_name', 'messenger_type', 'del_request', 'user_type', 'pub_wallet as wallet')
       ->where('uid', $uid)->first();
     $login_as = ($user->user_type == 3) ? 'publisher' : '';
     if ($user) {
@@ -75,8 +75,8 @@ class PubUserController extends Controller
       $return['data']    = $user;
       $return['login_as'] = $login_as;
       $wltPubAmt = getPubWalletAmount($uid);
-    //   $return['wallet']   = ($wltPubAmt) > 0 ? $wltPubAmt : number_format($user->pub_wallet, 2);
-      $user->wallet   = ($wltPubAmt) > 0 ? number_format($wltPubAmt,2) : number_format($user->wallet, 2);
+      //   $return['wallet']   = ($wltPubAmt) > 0 ? $wltPubAmt : number_format($user->pub_wallet, 2);
+      $user->wallet   = ($wltPubAmt) > 0 ? number_format($wltPubAmt, 2) : number_format($user->wallet, 2);
       $return['message'] = 'User profile info retrieved successfully';
     } else {
       $return['code']    = 101;
@@ -84,7 +84,6 @@ class PubUserController extends Controller
     }
     return json_encode($return, JSON_NUMERIC_CHECK);
   }
-
 
   public function update(Request $request, $uid)
   {
@@ -97,7 +96,7 @@ class PubUserController extends Controller
     $userKycAcpt = User::select('id', 'uid', 'phone')
       ->where('uid', $uid)
       ->where(function ($query) {
-        $query->where('photo_verified', 2)->orWhere('photo_id_verified', 2);
+        $query->where('photo_verified', 2)->orWhere('photo_id_verified', 2)->orWhere('pan_verified', 2);
       })
       ->first();
 
@@ -107,7 +106,6 @@ class PubUserController extends Controller
       return $this->updateProfileWithoutValidation($request, $uid);
     }
   }
-
   private function updateProfileWithValidation(Request $request, $uid, $mname)
   {
     $user = User::select('id', 'uid', 'phone', 'first_name', 'last_name', 'email')->where('uid', $uid)->first();
@@ -127,7 +125,7 @@ class PubUserController extends Controller
       ], [
         'phone.required' => 'The phone no. must contain only numeric characters.',
         'phone.between' => 'The phone no. must contain minimum 4 and maximum 15 digits.',
-        'messenger_name.regex'=> 'Please enter valid id/number',
+        'messenger_name.regex' => 'Please enter valid id/number',
       ]);
     }
     return $this->handleValidationResponse($validator, $request, $user);
@@ -146,12 +144,11 @@ class PubUserController extends Controller
       'messenger_type' => 'required',
       'messenger_name' => 'required|regex:/^[^<>]+$/',
       'phonecode' => ['required', new CustomValidationRules($request)],
-    ],[
-       'messenger_name.regex'=> 'Please enter valid id/number',
+    ], [
+      'messenger_name.regex' => 'Please enter valid id/number',
     ]);
     return $this->handleValidationResponse($validator, $request, $user);
   }
-
   private function handleValidationResponse($validator, $request, $user)
   {
     if ($validator->fails()) {
@@ -164,22 +161,48 @@ class PubUserController extends Controller
   }
   private function getSuccessResponse($user, $request)
   {
-    if($request->country){
-      $count_name = Country::select('id', 'name', 'phonecode', 'status', 'trash')->where('name',$request->country)->where('status', 1)->where('trash', 1)->first();
-      if(!$count_name){
-          $return['code']      = 101;
-          $return['message']   = 'Country Not Exist!';
-          return json_encode($return);
+    if ($request->country) {
+      $count_name = Country::select('id', 'name', 'phonecode', 'status', 'trash')->where('name', $request->country)->where('status', 1)->where('trash', 1)->first();
+      if (!$count_name) {
+        $return['code']      = 101;
+        $return['message']   = 'Country Not Exist!';
+        return json_encode($return);
       }
-  }
+
+      $user = User::where('uid', $user->uid)->first();
+
+      if (strtolower($user->country) != strtolower($request->country)) {
+        // If the country is not India, check only photo and photo_id KYC fields
+        if (strtolower($request->country) == 'india') {
+          if (($user->photo_verified == 1 || $user->photo_verified == 2) ||
+            ($user->photo_id_verified == 1 || $user->photo_id_verified == 2)
+          ) {
+            $return['code']      = 403;
+            $return['message']   = 'Cannot Update the Country: KYC Document Pending or Approved!';
+            return json_encode($return);
+          }
+        }
+        // If the country is India, check all KYC fields (photo, photo_id, and pan)
+        if (strtolower($request->country) != 'india') {
+          if (($user->photo_verified == 1 || $user->photo_verified == 2) ||
+            ($user->photo_id_verified == 1 || $user->photo_id_verified == 2) ||
+            ($user->pan_verified == 1 || $user->pan_verified == 2)
+          ) {
+            $return['code']      = 403;
+            $return['message']   = 'Cannot Update the Country: KYC Document Pending or Approved!';
+            return json_encode($return);
+          }
+        }
+      }
+    }
     $res = $request->all();
     $type = 2;
     userUpdateProfile($res, $user->uid, $type);
-    
+
     $userKycAcpt = User::select('id', 'uid', 'phone')
       ->where('uid', $user->uid)
       ->where(function ($query) {
-        $query->where('photo_verified', 2)->orWhere('photo_id_verified', 2);
+        $query->where('photo_verified', 2)->orWhere('photo_id_verified', 2)->orWhere('pan_verified', 2);
       })->first();
     if ($userKycAcpt) {
       $user                   = User::where('uid', $user->uid)->first();
@@ -219,7 +242,6 @@ class PubUserController extends Controller
       'message' => 'Updated Successfully',
     ];
   }
-
 
   /**
    * @OA\Post(
@@ -299,273 +321,348 @@ class PubUserController extends Controller
   public function change_password(Request $request)
   {
 
-        $validator = Validator::make(
-            $request->all(),
-            [
-                'user_id' => 'required',
-                'current_password' => 'required',
-                'new_password' => 'required',
-                'confirm_password' => 'required',
-            ]
-        );
-        if ($validator->fails()) {
-            $return['code']    = 100;
-            $return['error']   = $validator->errors();
-            $return['message'] = 'Validation Error!';
-            return json_encode($return);
-        }
-        $userid = $request->input('user_id');
-        $users = User::where('uid', $userid)->first();
-        if (empty($users)) {
-            $return['code'] = 101;
-            $return['msg'] = 'User id is invalid or not registered!';
-            return response()->json($return);
-        }
-        $password = $request->input('current_password');
-        $npassword = $request->input('new_password');
-        $compassword = $request->input('confirm_password');
-        if ($npassword == $compassword) {
-            if (Hash::check($password, $users->password)) {
-                $newpass = Hash::make($npassword);
-                $users->password = $newpass;
-                if ($users->save()) {
-                    $return['code']    = 200;
-                    $return['message'] = 'Password Chanage Successfully';
-                } else {
-                    $return['code']    = 103;
-                    $return['message'] = 'Not Match Password';
-                }
-            } else {
-                $return['code']    = 103;
-                $return['message'] = 'Current Password Is Invalid';
-            }
+    $validator = Validator::make(
+      $request->all(),
+      [
+        'user_id' => 'required',
+        'current_password' => 'required',
+        'new_password' => 'required',
+        'confirm_password' => 'required',
+      ]
+    );
+    if ($validator->fails()) {
+      $return['code']    = 100;
+      $return['error']   = $validator->errors();
+      $return['message'] = 'Validation Error!';
+      return json_encode($return);
+    }
+    $userid = $request->input('user_id');
+    $users = User::where('uid', $userid)->first();
+    if (empty($users)) {
+      $return['code'] = 101;
+      $return['msg'] = 'User id is invalid or not registered!';
+      return response()->json($return);
+    }
+    $password = $request->input('current_password');
+    $npassword = $request->input('new_password');
+    $compassword = $request->input('confirm_password');
+    if ($npassword == $compassword) {
+      if (Hash::check($password, $users->password)) {
+        $newpass = Hash::make($npassword);
+        $users->password = $newpass;
+        if ($users->save()) {
+          $return['code']    = 200;
+          $return['message'] = 'Password Chanage Successfully';
         } else {
-            $return['code']    = 102;
-            $return['message'] = 'Not Match New Password & Confirm Password';
+          $return['code']    = 103;
+          $return['message'] = 'Not Match Password';
         }
-        return json_encode($return, JSON_NUMERIC_CHECK);
+      } else {
+        $return['code']    = 103;
+        $return['message'] = 'Current Password Is Invalid';
+      }
+    } else {
+      $return['code']    = 102;
+      $return['message'] = 'Not Match New Password & Confirm Password';
     }
-  
-  	
-    /**
-    * @OA\Post(
-    *     path="/api/user/pub/kyc",
-    *     summary="Upload KYC Documents For Publisher",
-    *     tags={"Kyc"},
-    *     @OA\RequestBody(
-    *         required=true,
-    *         @OA\MediaType(
-    *             mediaType="multipart/form-data",
-    *             @OA\Schema(
-    *                 @OA\Property(
-    *                     property="uid",
-    *                     type="string",
-    *                     description="User ID"
-    *                 ),
-    *                 @OA\Property(
-    *                     property="user_photo",
-    *                     type="string",
-    *                     description="User photo",
-    *                     format="binary"
-    *                 ),
-    *                 @OA\Property(
-    *                     property="user_photo_id",
-    *                     type="string",
-    *                     description="User photo ID",
-    *                     format="binary"
-    *                 )
-    *             )
-    *         )
-    *     ),
-    *     @OA\Parameter(
-    *         name="x-api-key",
-    *         in="header",
-    *         required=true,
-    *         description="x-api-key [Publisher]",
-    *         @OA\Schema(
-    *             type="string"
-    *         )
-    *     ),
-    *     @OA\Response(
-    *         response=200,
-    *         description="Success response",
-    *         @OA\JsonContent(
-    *             type="object",
-    *             @OA\Property(property="code", type="integer", example=200, description="Status code"),
-    *             @OA\Property(property="message", type="string", description="Success message")
-    *         )
-    *     ),
-    *     @OA\Response(
-    *         response=101,
-    *         description="Error response",
-    *         @OA\JsonContent(
-    *             type="object",
-    *             @OA\Property(property="code", type="integer", example=101, description="Status code"),
-    *             @OA\Property(property="message", type="string", description="Error message")
-    *         )
-    *     )
-    * )
-    */
-     public function pubKycUpload(Request $request)
-    {
-      $selfie = $request->user_photo;
-      $idProof = $request->user_photo_id;
-      	if(!$request->user_photo && !$request->user_photo_id) {
-          	$validator = Validator::make(
-            $request->all(),
-            [
-                'uid' => 'required',
-                'user_photo' => 'required',
-                'user_photo_id' => 'required',
-            ]
-        ); 
-       }
-      
-         if($request->user_photo && $request->user_photo_id) {
-           $validator = Validator::make(
-            $request->all(),
-            [
-                'uid' => 'required',
-                'user_photo' => 'required|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
-                'user_photo_id' => 'required|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
-            ]
-        ); 
-       }
-      
-      if($request->user_photo && !$request->user_photo_id) {
-           	$validator = Validator::make(
-            $request->all(),
-            [
-                'uid' => 'required',
-                'user_photo' => 'required|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
-            ]
-        ); 
-       }
-      
-      
-      if(!$request->user_photo && $request->user_photo_id) {
-          	$validator = Validator::make(
-              $request->all(),
-              [
-                  'uid' => 'required',
-                  'user_photo_id' => 'required|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
-              ]
-          ); 
-       }
-        if ($validator->fails()) {
-            $return['code'] = 100;
-            $return['error'] = $validator->errors();
-            $return['message'] = 'Validation error!';
-            return json_encode($return);
-        }
-      	$user        = User::where('uid', $request->uid)->first();
-      	if(empty($user))
-        {
-          $return['code']    = 101;
-          $return['message'] = 'User not Found!';
-          return json_encode($return);
-        }
-          if($user->address_line1 == null || $user->city == null){
-          $return['code']    = 107;
-          $return['message'] = 'Please Update Your Profile First!';
-          return json_encode($return);
-        }
-      	 if($request->user_photo) {
-          $imageName = md5(Str::random(10)) . '.' .$request->user_photo->extension();  
-          $request->user_photo->move(public_path('kycdocument'), $imageName);
-          $user->user_photo  = $imageName;
-          $user->photo_verified  		= 1;
-          PubDocumentLog::create([
-            'uid' => $request->uid,
-            'doc_type' => 'Selfie',
-            'status' => '1',
-            'doc_name' => $imageName
-          ]);
-         }
-      	if($request->user_photo_id) {
-          $imageIdName = md5(Str::random(10)) . '.' .$request->user_photo_id->extension();  
-          $request->user_photo_id->move(public_path('kycdocument'), $imageIdName);
-          $user->user_photo_id  = $imageIdName;
-          $user->photo_id_verified	= 1;
-          PubDocumentLog::create([
-            'uid' => $request->uid,
-            'doc_type' => 'Id Proof',
-            'status' => '1',
-            'doc_name' => $imageIdName
-          ]);
-      	}
-          if ($user->update()) {
-            /* Adunit Activity Add & Generate Notification */
-                $activitylog = new Activitylog();
-                $activitylog->uid    = $request->uid;
-                $activitylog->type    = 'Kyc Documnet';
-                $activitylog->description    = 'Kyc Document uploaded by user successfully';
-                $activitylog->status    = '1';
-                $activitylog->save();
-                 //user notification added code //
-                $notification = new Notification();
+    return json_encode($return, JSON_NUMERIC_CHECK);
+  }
 
-                $notification->notif_id = gennotificationuniq();
 
-                if ($selfie && !$idProof) {
-                  $notification->title = 'KYC Uploaded For Photo Document - 7Search PPC ';
-                  $notification->noti_desc = "Kyc Document uploaded successfully";
-                  $notification->noti_for = 2;
-                  $notification->all_users = 0;
-                } else if ($idProof && !$selfie) {
-                  $notification->title = 'KYC Uploaded For Id Proof Document - 7Search PPC ';
-                  $notification->noti_desc = "Kyc Document uploaded successfully";
-                  $notification->noti_for = 2;
-                  $notification->all_users = 0;
-                } else if ($selfie && $idProof) {
-                  $notification->title = 'KYC Uploaded For Photo & Id Proof Document - 7Search PPC ';
-                  $notification->noti_desc = "Kyc Document uploaded successfully";
-                  $notification->noti_for = 2;
-                  $notification->all_users = 0;
-                }
-
-                if ($notification->save()) {
-                  $noti = new UserNotification();
-                  $noti->notifuser_id = gennotificationuseruniq();
-                  $noti->noti_id = $notification->id;
-                  $noti->user_id = $request->uid;
-                  $noti->user_type = 2;
-                  $noti->view = 0;
-                  $noti->created_at = Carbon::now();
-                  $noti->updated_at = now();
-                  $noti->save();
-                }
-                // user notification end code //
-            	/* Admin Section  */ 
-              	$email = $user->email;
-                $fullname = $user->first_name . ' ' . $user->last_name;
-                $useridas = $user->uid;
-              	$data['details'] = array('subject' => 'Kyc Document uploaded by user successfully - Publisher 7Search PPC ', 'fullname' => $fullname,  'usersid' => $useridas);
-              	$subject = 'KYC Submission Confirmation - 7Search PPC';
-                $body =  View('emailtemp.pubkycuploadeduser', $data);
-                sendmailUser($subject,$body,$email);
-                $adminmail1 = 'advertisersupport@7searchppc.com';
-                $adminmail2 = 'info@7searchppc.com';
-                $bodyadmin =   View('emailtemp.userkycuploadedadmin', $data);
-                $subjectadmin = 'KYC Update Request successfully - Publisher 7Search PPC';
-                $sendmailadmin =  sendmailAdmin($subjectadmin,$bodyadmin,$adminmail1,$adminmail2); 
-                if($sendmailadmin == '1') 
-                {
-                    $return['code'] = 200;
-                    $return['message']  = 'Mail Send & Document Uploaded successfully !';
-                }
-                else 
-                {
-                    $return['code'] = 200;
-                    $return['message']  = 'Mail Not Send But Document Uploaded successfully !';
-                }
-          } else {
-              $return['code']    = 101;
-              $return['message'] = 'Something went wrong!';
-          }
-        return json_encode($return, JSON_NUMERIC_CHECK);
+  /**
+   * @OA\Post(
+   *     path="/api/user/pub/kyc",
+   *     summary="Upload KYC Documents For Publisher",
+   *     tags={"Kyc"},
+   *     @OA\RequestBody(
+   *         required=true,
+   *         @OA\MediaType(
+   *             mediaType="multipart/form-data",
+   *             @OA\Schema(
+   *                 @OA\Property(
+   *                     property="uid",
+   *                     type="string",
+   *                     description="User ID"
+   *                 ),
+   *                 @OA\Property(
+   *                     property="user_photo",
+   *                     type="string",
+   *                     description="User photo",
+   *                     format="binary"
+   *                 ),
+   *                 @OA\Property(
+   *                     property="user_photo_id",
+   *                     type="string",
+   *                     description="User photo ID",
+   *                     format="binary"
+   *                 )
+   *             )
+   *         )
+   *     ),
+   *     @OA\Parameter(
+   *         name="x-api-key",
+   *         in="header",
+   *         required=true,
+   *         description="x-api-key [Publisher]",
+   *         @OA\Schema(
+   *             type="string"
+   *         )
+   *     ),
+   *     @OA\Response(
+   *         response=200,
+   *         description="Success response",
+   *         @OA\JsonContent(
+   *             type="object",
+   *             @OA\Property(property="code", type="integer", example=200, description="Status code"),
+   *             @OA\Property(property="message", type="string", description="Success message")
+   *         )
+   *     ),
+   *     @OA\Response(
+   *         response=101,
+   *         description="Error response",
+   *         @OA\JsonContent(
+   *             type="object",
+   *             @OA\Property(property="code", type="integer", example=101, description="Status code"),
+   *             @OA\Property(property="message", type="string", description="Error message")
+   *         )
+   *     )
+   * )
+   */
+  public function pubKycUpload(Request $request)
+  {
+    $selfie = $request->user_photo;
+    $idProof = $request->user_photo_id;
+    $user_pan = $request->user_pan;
+    if (!$request->user_photo && !$request->user_photo_id && !$request->user_pan) {
+      $validator = Validator::make(
+        $request->all(),
+        [
+          'uid' => 'required',
+          'user_photo' => 'required',
+          'user_photo_id' => 'required',
+          'user_pan' => 'required',
+        ]
+      );
     }
-  
+
+    if ($request->user_photo && $request->user_photo_id && $request->user_pan) {
+      $validator = Validator::make(
+        $request->all(),
+        [
+          'uid' => 'required',
+          'user_photo' => 'required|image|mimes:jpeg,png,jpg|max:300',
+          'user_photo_id' => 'required|image|mimes:jpeg,png,jpg|max:300',
+          'user_pan' => 'required|image|mimes:jpeg,png,jpg|max:300',
+        ]
+      );
+    }
+
+    if ($request->user_photo && !$request->user_photo_id && !$request->user_pan) {
+      $validator = Validator::make(
+        $request->all(),
+        [
+          'uid' => 'required',
+          'user_photo' => 'required|image|mimes:jpeg,png,jpg|max:300',
+        ]
+      );
+    }
+
+
+    if (!$request->user_photo && $request->user_photo_id && !$request->user_pan) {
+      $validator = Validator::make(
+        $request->all(),
+        [
+          'uid' => 'required',
+          'user_photo_id' => 'required|image|mimes:jpeg,png,jpg|max:300',
+        ]
+      );
+    }
+
+    if (!$request->user_photo && !$request->user_photo_id && $request->user_pan) {
+      $validator = Validator::make(
+        $request->all(),
+        [
+          'uid' => 'required',
+          'user_pan' => 'required|image|mimes:jpeg,png,jpg|max:300',
+        ]
+      );
+    }
+
+    if ($request->user_photo && $request->user_photo_id && !$request->user_pan) {
+      $validator = Validator::make(
+        $request->all(),
+        [
+          'uid' => 'required',
+          'user_photo' => 'required|image|mimes:jpeg,png,jpg|max:300',
+          'user_photo_id' => 'required|image|mimes:jpeg,png,jpg|max:300',
+        ]
+      );
+    }
+
+    if ($request->user_photo && !$request->user_photo_id && $request->user_pan) {
+      $validator = Validator::make(
+        $request->all(),
+        [
+          'uid' => 'required',
+          'user_photo' => 'required|image|mimes:jpeg,png,jpg|max:300',
+          'user_pan' => 'required|image|mimes:jpeg,png,jpg|max:300',
+        ]
+      );
+    }
+
+    if (!$request->user_photo && $request->user_photo_id && $request->user_pan) {
+      $validator = Validator::make(
+        $request->all(),
+        [
+          'uid' => 'required',
+          'user_photo_id' => 'required|image|mimes:jpeg,png,jpg|max:300',
+          'user_pan' => 'required|image|mimes:jpeg,png,jpg|max:300',
+        ]
+      );
+    }
+
+    if ($validator->fails()) {
+      $return['code'] = 100;
+      $return['error'] = $validator->errors();
+      $return['message'] = 'Validation error!';
+      return json_encode($return);
+    }
+    $user        = User::where('uid', $request->uid)->first();
+    if (empty($user)) {
+      $return['code']    = 101;
+      $return['message'] = 'User not Found!';
+      return json_encode($return);
+    }
+    if ($user->address_line1 == null || $user->city == null) {
+      $return['code']    = 107;
+      $return['message'] = 'Please Update Your Profile First!';
+      return json_encode($return);
+    }
+    if ($request->user_photo) {
+      $imageName = md5(Str::random(10)) . '.' . $request->user_photo->extension();
+      $request->user_photo->move(public_path('kycdocument'), $imageName);
+      $user->user_photo  = $imageName;
+      $user->photo_verified      = 1;
+      PubDocumentLog::create([
+        'uid' => $request->uid,
+        'doc_type' => 'Selfie',
+        'status' => '1',
+        'doc_name' => $imageName
+      ]);
+    }
+    if ($request->user_photo_id) {
+      $imageIdName = md5(Str::random(10)) . '.' . $request->user_photo_id->extension();
+      $request->user_photo_id->move(public_path('kycdocument'), $imageIdName);
+      $user->user_photo_id  = $imageIdName;
+      $user->photo_id_verified  = 1;
+      PubDocumentLog::create([
+        'uid' => $request->uid,
+        'doc_type' => 'Id Proof',
+        'status' => '1',
+        'doc_name' => $imageIdName
+      ]);
+    }
+    if ($request->user_pan) {
+      $imageIdName = md5(Str::random(10)) . '.' . $request->user_pan->extension();
+      $request->user_pan->move(public_path('kycdocument'), $imageIdName);
+      $user->user_pan  = $imageIdName;
+      $user->pan_verified  = 1;
+      PubDocumentLog::create([
+        'uid' => $request->uid,
+        'doc_type' => 'PAN Card',
+        'status' => '1',
+        'doc_name' => $imageIdName
+      ]);
+    }
+    if ($user->update()) {
+      /* Adunit Activity Add & Generate Notification */
+      $activitylog = new Activitylog();
+      $activitylog->uid    = $request->uid;
+      $activitylog->type    = 'Kyc Documnet';
+      $activitylog->description    = 'Kyc Document uploaded by user successfully';
+      $activitylog->status    = '1';
+      $activitylog->save();
+      //user notification added code //
+      $notification = new Notification();
+
+      $notification->notif_id = gennotificationuniq();
+
+      if ($selfie && !$idProof && !$user_pan) {
+        $notification->title = 'KYC Uploaded For Photo Document - 7Search PPC ';
+        $notification->noti_desc = "Kyc Document uploaded successfully";
+        $notification->noti_for = 2;
+        $notification->all_users = 0;
+      } else if ($idProof && !$selfie && !$user_pan) {
+        $notification->title = 'KYC Uploaded For Id Proof Document - 7Search PPC ';
+        $notification->noti_desc = "Kyc Document uploaded successfully";
+        $notification->noti_for = 2;
+        $notification->all_users = 0;
+      } else if ($user_pan && !$idProof && !$selfie) {
+        $notification->title = 'KYC Uploaded For PAN Card Document - 7Search PPC ';
+        $notification->noti_desc = "Kyc Document uploaded successfully";
+        $notification->noti_for = 2;
+        $notification->all_users = 0;
+      } else if ($selfie && $idProof && !$user_pan) {
+        $notification->title = 'KYC Uploaded For Photo & Id Proof Document - 7Search PPC ';
+        $notification->noti_desc = "Kyc Document uploaded successfully";
+        $notification->noti_for = 2;
+        $notification->all_users = 0;
+      } else if ($selfie && $user_pan && !$idProof) {
+        $notification->title = 'KYC Uploaded For Photo & PAN Card Document - 7Search PPC ';
+        $notification->noti_desc = "Kyc Document uploaded successfully";
+        $notification->noti_for = 2;
+        $notification->all_users = 0;
+      } else if ($idProof && $user_pan && !$selfie) {
+        $notification->title = 'KYC Uploaded For Id Proof & PAN Card Document - 7Search PPC ';
+        $notification->noti_desc = "Kyc Document uploaded successfully";
+        $notification->noti_for = 2;
+        $notification->all_users = 0;
+      } else if ($selfie && $idProof && $user_pan) {
+        $notification->title = 'KYC Uploaded For Photo, Id Proof & PAN Card Document - 7Search PPC ';
+        $notification->noti_desc = "Kyc Document uploaded successfully";
+        $notification->noti_for = 2;
+        $notification->all_users = 0;
+      }
+
+      if ($notification->save()) {
+        $noti = new UserNotification();
+        $noti->notifuser_id = gennotificationuseruniq();
+        $noti->noti_id = $notification->id;
+        $noti->user_id = $request->uid;
+        $noti->user_type = 2;
+        $noti->view = 0;
+        $noti->created_at = Carbon::now();
+        $noti->updated_at = now();
+        $noti->save();
+      }
+      // user notification end code //
+      /* Admin Section  */
+      $email = $user->email;
+      $fullname = $user->first_name . ' ' . $user->last_name;
+      $useridas = $user->uid;
+      $data['details'] = array('subject' => 'Kyc Document uploaded by user successfully - Publisher 7Search PPC ', 'fullname' => $fullname,  'usersid' => $useridas);
+      $subject = 'KYC Submission Confirmation - 7Search PPC';
+      $body =  View('emailtemp.pubkycuploadeduser', $data);
+      sendmailUser($subject, $body, $email);
+      $adminmail1 = 'advertisersupport@7searchppc.com';
+      $adminmail2 = 'info@7searchppc.com';
+      $bodyadmin =   View('emailtemp.userkycuploadedadmin', $data);
+      $subjectadmin = 'KYC Update Request successfully - Publisher 7Search PPC';
+      $sendmailadmin =  sendmailAdmin($subjectadmin, $bodyadmin, $adminmail1, $adminmail2);
+      if ($sendmailadmin == '1') {
+        $return['code'] = 200;
+        $return['message']  = 'Mail Send & Document Uploaded successfully !';
+      } else {
+        $return['code'] = 200;
+        $return['message']  = 'Mail Not Send But Document Uploaded successfully !';
+      }
+    } else {
+      $return['code']    = 101;
+      $return['message'] = 'Something went wrong!';
+    }
+    return json_encode($return, JSON_NUMERIC_CHECK);
+  }
+
 
   /**
    * @OA\Post(
@@ -621,10 +718,12 @@ class PubUserController extends Controller
    */
   public function pubKycInfo(Request $request)
   {
-    $user = User::select('user_photo', 'user_photo_remark', 'user_photo_id_remark', 'user_photo_id', 'photo_verified', 'photo_id_verified')
+    $user = User::select('user_photo', 'user_photo_remark', 'user_photo_id_remark', 'user_photo_id', 'photo_verified', 'photo_id_verified', 'user_pan', 'pan_verified', 'user_pan_remark')
       ->where('uid', $request->uid)->first();
     $user->user_photo = (strlen($user->user_photo) > 0) ? config('app.url') . 'kycdocument' . '/' . $user->user_photo : '';
     $user->user_photo_id = (strlen($user->user_photo_id) > 0) ? config('app.url') . 'kycdocument' . '/' . $user->user_photo_id : '';
+    $user->user_pan = (strlen($user->user_pan) > 0) ? config('app.url') . 'kycdocument' . '/' .
+      $user->user_pan : '';
     if ($user) {
       $return['code']    = 200;
       $return['data']    = $user;
@@ -760,9 +859,9 @@ class PubUserController extends Controller
       ->where('uid', $request->uid)->first();
 
     $pay = DB::table('pub_payouts')->select(
-        DB::raw('SUM(amount) as amt'),
-        DB::raw("(SELECT SUM(amount) FROM ss_pub_payouts WHERE ss_pub_payouts.status = 1 AND ss_pub_payouts.publisher_id = '" . $request->uid . "') as withdrawl_amt")
-      )->where('publisher_id', $request->uid)->first();
+      DB::raw('SUM(amount) as amt'),
+      DB::raw("(SELECT SUM(amount) FROM ss_pub_payouts WHERE ss_pub_payouts.status = 1 AND ss_pub_payouts.publisher_id = '" . $request->uid . "') as withdrawl_amt")
+    )->where('publisher_id', $request->uid)->first();
 
     $pay_list = DB::table('pub_payouts')->select('transaction_id', 'amount', 'release_date', 'status', 'remark', DB::raw("DATE_FORMAT(created_at, '%d-%m-%Y') as date"))->where('publisher_id', $request->uid)->where('status', 1)->get();
     $upc_list = DB::table('pub_payouts')->select('transaction_id', 'amount', 'status', 'remark', DB::raw("DATE_FORMAT(release_date, '%d-%m-%Y') as release_date"), DB::raw("DATE_FORMAT(created_at, '%d-%m-%Y') as date"))->where('publisher_id', $request->uid)->where('status', '!=', 1)->get();
@@ -810,12 +909,12 @@ class PubUserController extends Controller
   }
   public function pay_info(Request $request)
   {
-    $user = User::select('payout_method', 'withdrawl_limit', 'photo_verified', 'photo_id_verified', 'pub_wallet')
+    $user = User::select('payout_method', 'withdrawl_limit', 'photo_verified', 'photo_id_verified', 'pan_verified', 'pub_wallet', 'country')
       ->where('uid', $request->uid)->first();
     $pay = DB::table('pub_payouts')->select(
-        DB::raw('SUM(amount) as amt'),
-        DB::raw("(SELECT SUM(amount) FROM ss_pub_payouts WHERE ss_pub_payouts.status = 1 AND ss_pub_payouts.publisher_id = '" . $request->uid . "') as withdrawl_amt")
-      )->where('publisher_id', $request->uid)->first();
+      DB::raw('SUM(amount) as amt'),
+      DB::raw("(SELECT SUM(amount) FROM ss_pub_payouts WHERE ss_pub_payouts.status = 1 AND ss_pub_payouts.publisher_id = '" . $request->uid . "') as withdrawl_amt")
+    )->where('publisher_id', $request->uid)->first();
     $pay_list = DB::table('pub_payouts')->select('transaction_id', 'amount', 'release_date', 'status', 'remark', DB::raw("DATE_FORMAT(created_at, '%d-%m-%Y') as date"))->where('publisher_id', $request->uid)->where('status', 1)->get();
     $upc_list = DB::table('pub_payouts')->select('transaction_id', 'amount', 'status', 'remark', DB::raw("DATE_FORMAT(release_date, '%d-%m-%Y') as release_date"), DB::raw("DATE_FORMAT(created_at, '%d-%m-%Y') as date"))->where('publisher_id', $request->uid)->where('status', '!=', 1)->get();
 
@@ -824,23 +923,48 @@ class PubUserController extends Controller
         ->select('pub_withdrawl_limit', 'payout_name', 'payout_id', 'pub_payout_methods.image', 'pub_payout_methods.display_name', 'pub_user_payout_modes.status')
         ->join('pub_payout_methods', 'pub_user_payout_modes.payout_id', 'pub_payout_methods.id')
         ->where('pub_user_payout_modes.publisher_id', $request->uid)->where('pub_user_payout_modes.status', 1)->first();
-      if ($user->photo_verified == 0 && $user->photo_id_verified == 1) {
-        $data['kyc_status'] =  0;
-      } elseif ($user->photo_verified == 1 && $user->photo_id_verified == 0) {
-        $data['kyc_status'] =  0;
-      } elseif ($user->photo_verified == 0 && $user->photo_id_verified == 3) {
-        $data['kyc_status'] =  3;
-      } elseif ($user->photo_verified == 3 && $user->photo_id_verified == 0) {
-        $data['kyc_status'] =  3;
-      } elseif ($user->photo_verified == 1 && $user->photo_id_verified == 1) {
-        $data['kyc_status'] =  1;
-      } elseif ($user->photo_verified == 1 && $user->photo_id_verified == 3) {
-        $data['kyc_status'] =  3;
-      } elseif ($user->photo_verified == 3 && $user->photo_id_verified == 1) {
-        $data['kyc_status'] =  3;
+      // Determine KYC status based on all combinations
+      $photo_verified = $user->photo_verified;
+      $photo_id_verified = $user->photo_id_verified;
+      $pan_verified = $user->pan_verified;
+      $country = $user->country;
+
+      // Assume $country is the user's country, and 'India' is the criterion for full KYC check
+      if (strtolower($country) == 'india') {
+        // For Indian users, check all documents (photo, photo_id, and pan)
+        if ($photo_verified == 3 || $photo_id_verified == 3 || $pan_verified == 3) {
+          $data['kyc_status'] = 3; // Rejected
+        } elseif ($photo_verified == 0 && $photo_id_verified == 0 && $pan_verified == 0) {
+          $data['kyc_status'] = 0; // Not uploaded
+        } elseif ($photo_verified == 1 && $photo_id_verified == 1 && $pan_verified == 1) {
+          $data['kyc_status'] = 1; // Pending
+        } elseif (
+          ($photo_verified == 2 && ($photo_id_verified == 1 || $photo_id_verified == 0) && ($pan_verified == 1 || $pan_verified == 0)) ||
+          ($photo_id_verified == 2 && ($photo_verified == 1 || $photo_verified == 0) && ($pan_verified == 1 || $pan_verified == 0)) ||
+          ($pan_verified == 2 && ($photo_verified == 1 || $photo_verified == 0) && ($photo_id_verified == 1 || $photo_id_verified == 0))
+        ) {
+          $data['kyc_status'] = 2; // Accepted (only one is accepted)
+        } else {
+          $data['kyc_status'] = ($photo_verified == 2 || $photo_id_verified == 2 || $pan_verified == 2) ? 2 : 1;
+        }
       } else {
-        $data['kyc_status'] = $user->photo_verified;
+        // For non-Indian users, only check photo and photo_id (ignore pan)
+        if ($photo_verified == 3 || $photo_id_verified == 3) {
+          $data['kyc_status'] = 3; // Rejected
+        } elseif ($photo_verified == 0 && $photo_id_verified == 0) {
+          $data['kyc_status'] = 0; // Not uploaded
+        } elseif ($photo_verified == 1 && $photo_id_verified == 1) {
+          $data['kyc_status'] = 1; // Pending
+        } elseif (
+          ($photo_verified == 2 && ($photo_id_verified == 1 || $photo_id_verified == 0)) ||
+          ($photo_id_verified == 2 && ($photo_verified == 1 || $photo_verified == 0))
+        ) {
+          $data['kyc_status'] = 2; // Accepted (only one is accepted)
+        } else {
+          $data['kyc_status'] = ($photo_verified == 2 || $photo_id_verified == 2) ? 2 : 1;
+        }
       }
+
       // if ($user->photo_verified == 0 && $user->photo_id_verified == 1) {
       //     $data['kyc_status'] = 0;
       // } elseif ($user->photo_verified == 1 && $user->photo_id_verified == 0) {
@@ -869,8 +993,6 @@ class PubUserController extends Controller
       //     $data['kyc_status'] = $user->photo_verified;
       // }
 
-
-
       $data['pay_mode_status'] = (!empty($payMode)) ? 1 : 0;
       $data['payout_mode'] = ($payMode) ? $payMode->payout_name : '';
       $data['display_name'] = ($payMode) ? $payMode->display_name : '';
@@ -894,7 +1016,6 @@ class PubUserController extends Controller
       $data['upcoming_pay_list'] = $upc_list;
       $data['pay_list'] = $pay_list;
 
-
       $return['code']    = 200;
       $return['data']    = $data;
       $return['message'] = 'User Payout info retrieved successfully';
@@ -906,7 +1027,80 @@ class PubUserController extends Controller
     return json_encode($return, JSON_NUMERIC_CHECK);
   }
 
+  public function payoutPubInvoice(Request $request)
+  {
+    $validator = Validator::make(
+      $request->all(),
+      [
+        'transaction_id' => "required",
+      ]
+    );
 
+    if ($validator->fails()) {
+      $return['code'] = 100;
+      $return['msg'] = 'error';
+      $return['err'] = $validator->errors();
+      return response()->json($return, 400);
+    }
+
+    $transaction_id = $request->input('transaction_id');
+
+    $transview = DB::table('pub_payouts')
+      ->select(
+        'pub_payouts.id',
+        'pub_payouts.publisher_id',
+        'pub_payouts.transaction_id',
+        'pub_payouts.amount',
+        'pub_payouts.payout_method',
+        'pub_payouts.payout_id',
+        'pub_payouts.payout_transaction_id',
+        'pub_payouts.status as payout_status',
+        'pub_payouts.release_date',
+        'pub_payouts.release_created_at',
+        'pub_payouts.remark',
+        'pub_payouts.invoice_number',
+        'pub_payouts.created_at',
+        'users.first_name',
+        'users.uid',
+        'users.last_name',
+        'users.email',
+        'users.address_line1',
+        'users.address_line2',
+        'users.city',
+        'users.state',
+        'users.country',
+        'users.pub_wallet', // Add pub_wallet here to include it in the response
+        'users.wallet',
+      )
+      ->leftJoin('users', 'users.uid', '=', 'pub_payouts.publisher_id')
+      ->where('pub_payouts.transaction_id', $transaction_id)
+      ->first();
+
+    if ($transview) {
+      $tax_deduction = 0.00;
+      $net_amount = $transview->amount;
+
+      if (strtolower($transview->country) == 'india') {
+        $tax_deduction = 0.03 * $transview->amount;
+        $net_amount = $transview->amount - $tax_deduction;
+      }
+
+      $return['code'] = 200;
+      $return['msg'] = 'Data Successfully!';
+      $return['data'] = $transview;
+      $return['tax_deduction'] = $tax_deduction;
+      $return['net_amount'] = $net_amount;
+      $return['pub_wallet'] = $transview->pub_wallet; // Send pub_wallet in the response
+
+      return response()->json($return, 200);
+    } else {
+      $return['code'] = 101;
+      $return['msg'] = 'Transaction Not Found!';
+      return response()->json($return, 404);
+    }
+
+    return response()->json($return, JSON_NUMERIC_CHECK);
+  }
 
   /**
    * @OA\Post(
@@ -975,6 +1169,7 @@ class PubUserController extends Controller
    *     )
    * )
    */
+
   public function payout_list(Request $request)
   {
     $uid = $request->input('uid');
@@ -985,13 +1180,13 @@ class PubUserController extends Controller
 
     $users = User::where('uid', $uid)->first();
 
-
     if (!empty($users)) {
       $trlog = DB::table('pub_payouts')
-        ->select('transaction_id', 'amount', 'payout_method', 'release_date', 'status', 'remark', 'release_created_at')
+        ->select('transaction_id', 'amount', 'payout_method', 'invoice_number', 'release_date', 'status', 'remark', 'release_created_at')
         ->where('publisher_id', $uid)
         ->where('status', 1)
         ->orderBy('id', 'desc');
+
       $row = $trlog->count();
       $datas = $trlog->offset($start)->limit($limit)->get();
 
@@ -1002,14 +1197,11 @@ class PubUserController extends Controller
       $return['wallet']   = ($wltPubAmt) > 0 ? $wltPubAmt : $users->pub_wallet;
       $return['row']         = $row;
     } else {
-
       $return['code'] =  100;
       $return['message'] = 'Not Found User';
     }
     return json_encode($return, JSON_NUMERIC_CHECK);
   }
-
-
 
   public function balance_info(Request $request)
   {
@@ -1017,9 +1209,9 @@ class PubUserController extends Controller
     $user = User::select('pub_wallet')->where('uid', $request->uid)->first();
 
     $pay = DB::table('pub_payouts')->select(
-        DB::raw('SUM(amount) as amt'),
-        DB::raw("(SELECT SUM(amount) FROM ss_pub_payouts WHERE ss_pub_payouts.status = 1 AND ss_pub_payouts.publisher_id = '" . $request->uid . "') as withdrawl_amt")
-      )->where('publisher_id', $request->uid)->first();
+      DB::raw('SUM(amount) as amt'),
+      DB::raw("(SELECT SUM(amount) FROM ss_pub_payouts WHERE ss_pub_payouts.status = 1 AND ss_pub_payouts.publisher_id = '" . $request->uid . "') as withdrawl_amt")
+    )->where('publisher_id', $request->uid)->first();
 
     if ($user) {
 
@@ -1180,140 +1372,139 @@ class PubUserController extends Controller
   }
 
   // get publisher header message data
-   /**
-    * @OA\Post(
-    *     path="/api/pub/user/header-message",
-    *     summary="Get Publisher Header Message",
-    *     tags={"Publisher Header Message"},
-    *     @OA\RequestBody(
-    *         required=true,
-    *         @OA\MediaType(
-    *             mediaType="multipart/form-data",
-    *             @OA\Schema(
-    *                 required={"uid"},
-    *                 @OA\Property(property="uid", type="string", description="User ID")
-    *             )
-    *         )
-    *     ),
-    *     @OA\Parameter(
-    *         name="x-api-key",
-    *         in="header",
-    *         required=true,
-    *         description="x-api-key",
-    *         @OA\Schema(
-    *             type="string"
-    *         )
-    *     ),
-    *     @OA\Response(
-    *         response=200,
-    *         description="Success response",
-    *         @OA\JsonContent(
-    *             type="object",
-    *             @OA\Property(property="code", type="integer", description="Status code"),
-    *             @OA\Property(property="message", type="string", description="Publisher Header Message Data Found Successfully!")
-    *         )
-    *     ),
-    *     @OA\Response(
-    *         response=101,
-    *         description="Status is disable data not found!",
-    *         @OA\JsonContent(
-    *             type="object",
-    *             @OA\Property(property="code", type="integer", description="Status code"),
-    *             @OA\Property(property="message", type="string", description="Error message")
-    *         )
-    *     )
-    * )
-    */
-  public function getpubHeadermsgdata() {
-      $data = DB::table("header_messages")->select("header_content","slider_content","content_speed")->where(["status"=>1, "account_type"=>2])->first();
-      if (!empty($data)) {
-          $return['code']    = 200;
-          $return['data']    = $data;
-          $return['message'] = 'Publisher Header Message Data Found Successfully!';
-      } else {
-          $return['code']    = 101;
-          $return['message'] = 'Status is disable data not found!';
-      }
-      return json_encode($return, JSON_NUMERIC_CHECK);
+  /**
+   * @OA\Post(
+   *     path="/api/pub/user/header-message",
+   *     summary="Get Publisher Header Message",
+   *     tags={"Publisher Header Message"},
+   *     @OA\RequestBody(
+   *         required=true,
+   *         @OA\MediaType(
+   *             mediaType="multipart/form-data",
+   *             @OA\Schema(
+   *                 required={"uid"},
+   *                 @OA\Property(property="uid", type="string", description="User ID")
+   *             )
+   *         )
+   *     ),
+   *     @OA\Parameter(
+   *         name="x-api-key",
+   *         in="header",
+   *         required=true,
+   *         description="x-api-key",
+   *         @OA\Schema(
+   *             type="string"
+   *         )
+   *     ),
+   *     @OA\Response(
+   *         response=200,
+   *         description="Success response",
+   *         @OA\JsonContent(
+   *             type="object",
+   *             @OA\Property(property="code", type="integer", description="Status code"),
+   *             @OA\Property(property="message", type="string", description="Publisher Header Message Data Found Successfully!")
+   *         )
+   *     ),
+   *     @OA\Response(
+   *         response=101,
+   *         description="Status is disable data not found!",
+   *         @OA\JsonContent(
+   *             type="object",
+   *             @OA\Property(property="code", type="integer", description="Status code"),
+   *             @OA\Property(property="message", type="string", description="Error message")
+   *         )
+   *     )
+   * )
+   */
+  public function getpubHeadermsgdata()
+  {
+    $data = DB::table("header_messages")->select("header_content", "slider_content", "content_speed")->where(["status" => 1, "account_type" => 2])->first();
+    if (!empty($data)) {
+      $return['code']    = 200;
+      $return['data']    = $data;
+      $return['message'] = 'Publisher Header Message Data Found Successfully!';
+    } else {
+      $return['code']    = 101;
+      $return['message'] = 'Status is disable data not found!';
+    }
+    return json_encode($return, JSON_NUMERIC_CHECK);
   }
 
-   /**
-    * @OA\Post(
-    *     path="/api/pub/user/popup-message-list",
-    *     summary="Manage Popup Message",
-    *     tags={"Payouts & Wallet"},
-    *     @OA\RequestBody(
-    *         required=true,
-    *         @OA\MediaType(
-    *             mediaType="multipart/form-data",
-    *             @OA\Schema(
-    *                  required={"uid"},
-    *                 @OA\Property(
-    *                     property="uid",
-    *                     type="string",
-    *                     description="User ID"
-    *                 )
-    *             )
-    *         )
-    *     ),
-    *     @OA\Parameter(
-    *         name="x-api-key",
-    *         in="header",
-    *         required=true,
-    *         description="x-api-key [Publisher]",
-    *         @OA\Schema(
-    *             type="string"
-    *         )
-    *     ),
-    *     @OA\Response(
-    *         response=200,
-    *         description="Success response",
-    *         @OA\JsonContent(
-    *             type="object",
-    *             @OA\Property(property="code", type="integer", example=200, description="Status code"),
-    *             @OA\Property(property="data", type="object", description="User payout info", 
-    *                 @OA\Property(property="payout_method", type="string", description="Payout method"),
-    *                 @OA\Property(property="withdrawl_limit", type="number", format="float", description="Withdrawal limit")
-    *             ),
-    *             @OA\Property(property="message", type="string", description="Success message")
-    *         )
-    *     ),
-    *     @OA\Response(
-    *         response=101,
-    *         description="Error response",
-    *         @OA\JsonContent(
-    *             type="object",
-    *             @OA\Property(property="code", type="integer", example=101, description="Status code"),
-    *             @OA\Property(property="message", type="string", description="Error message")
-    *         )
-    *     )
-    * )
-    */
+  /**
+   * @OA\Post(
+   *     path="/api/pub/user/popup-message-list",
+   *     summary="Manage Popup Message",
+   *     tags={"Payouts & Wallet"},
+   *     @OA\RequestBody(
+   *         required=true,
+   *         @OA\MediaType(
+   *             mediaType="multipart/form-data",
+   *             @OA\Schema(
+   *                  required={"uid"},
+   *                 @OA\Property(
+   *                     property="uid",
+   *                     type="string",
+   *                     description="User ID"
+   *                 )
+   *             )
+   *         )
+   *     ),
+   *     @OA\Parameter(
+   *         name="x-api-key",
+   *         in="header",
+   *         required=true,
+   *         description="x-api-key [Publisher]",
+   *         @OA\Schema(
+   *             type="string"
+   *         )
+   *     ),
+   *     @OA\Response(
+   *         response=200,
+   *         description="Success response",
+   *         @OA\JsonContent(
+   *             type="object",
+   *             @OA\Property(property="code", type="integer", example=200, description="Status code"),
+   *             @OA\Property(property="data", type="object", description="User payout info", 
+   *                 @OA\Property(property="payout_method", type="string", description="Payout method"),
+   *                 @OA\Property(property="withdrawl_limit", type="number", format="float", description="Withdrawal limit")
+   *             ),
+   *             @OA\Property(property="message", type="string", description="Success message")
+   *         )
+   *     ),
+   *     @OA\Response(
+   *         response=101,
+   *         description="Error response",
+   *         @OA\JsonContent(
+   *             type="object",
+   *             @OA\Property(property="code", type="integer", example=101, description="Status code"),
+   *             @OA\Property(property="message", type="string", description="Error message")
+   *         )
+   *     )
+   * )
+   */
   public function listPopupMessagePub(Request $request)
   {
-          $validator = Validator::make($request->all(), [
-            'uid'     => 'required',
-            'popup_type'     => 'required'
-        ]);
+    $validator = Validator::make($request->all(), [
+      'uid'     => 'required',
+      'popup_type'     => 'required'
+    ]);
 
-        if ($validator->fails()) {
-            $return['code']    = 100;
-            $return['message'] = 'Validation Error';
-            $return['error']   = $validator->errors();
-            return json_encode($return, JSON_NUMERIC_CHECK);
-
-        }
-
-      $support = PopupMessage::select('title','sub_title','image','message','btn_content','btn_link')->where('account_type',2)->where('status',1)->where('popup_type',$request->popup_type)->first();
-      if (!empty($support)) {
-          $return['code']    = 200;
-          $return['data']    = $support;
-          $return['message'] = 'popup Message list retrieved successfully!';
-      } else {
-          $return['code']    = 101;
-          $return['message'] = 'Something went wrong!';
-      }
+    if ($validator->fails()) {
+      $return['code']    = 100;
+      $return['message'] = 'Validation Error';
+      $return['error']   = $validator->errors();
       return json_encode($return, JSON_NUMERIC_CHECK);
+    }
+
+    $support = PopupMessage::select('title', 'sub_title', 'image', 'message', 'btn_content', 'btn_link')->where('account_type', 2)->where('status', 1)->where('popup_type', $request->popup_type)->first();
+    if (!empty($support)) {
+      $return['code']    = 200;
+      $return['data']    = $support;
+      $return['message'] = 'popup Message list retrieved successfully!';
+    } else {
+      $return['code']    = 101;
+      $return['message'] = 'Something went wrong!';
+    }
+    return json_encode($return, JSON_NUMERIC_CHECK);
   }
-  
-}                 
+}
