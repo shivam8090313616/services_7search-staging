@@ -1,0 +1,1 @@
+Test<?php /**PATH /var/www/html/7searchPPC/services_7search-staging/resources/views/test-blade.blade.php ENDPATH**/ ?>
